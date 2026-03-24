@@ -27,28 +27,6 @@ Primary stack (from `go.mod` and repository sources):
 | VCS integration | Git CLI (`git diff --cached`) | system-installed |
 | Agent providers | Claude CLI, Cursor Agent CLI, OpenCode CLI | system-installed |
 
-## Project Architecture
-
-High-level architecture:
-
-```text
-main.go
-  -> cmd/root.go (orchestration)
-      -> config.Load(...)          // provider/model selection
-      -> git.ParseStagedDiff()     // staged diff parsing into files/hunks/lines
-      -> agent.New(...)            // provider-specific CLI adapter
-      -> quiz.Generator            // prompt build + diff render + JSON parse
-      -> stdout                    // quiz questions + answers output
-```
-
-Design boundaries:
-
-- `cmd` wires and runs the end-to-end review flow.
-- `config` owns TOML defaults and loading behavior.
-- `internal/git` parses staged diff text into structured data.
-- `internal/agent` encapsulates external agent CLI calls and response normalization.
-- `internal/quiz` builds prompts, parses returned JSON, and classifies questions (`general` vs `hunk`).
-
 ## Getting Started
 
 ### Prerequisites
