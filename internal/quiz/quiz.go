@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/locle97/vibecheck/internal/agent"
@@ -79,6 +80,7 @@ var jsonArrayRe = regexp.MustCompile(`(?s)\[.*\]`)
 
 func parseQuestions(raw string) ([]Question, error) {
 	raw = strings.TrimSpace(raw)
+	fmt.Print("Raw agent output:\n", raw, "\n---\n")
 	if strings.HasPrefix(raw, "```") {
 		if idx := strings.Index(raw, "\n"); idx != -1 {
 			raw = raw[idx+1:]
@@ -93,7 +95,13 @@ func parseQuestions(raw string) ([]Question, error) {
 
 	var questions []Question
 	if err := json.Unmarshal([]byte(match), &questions); err != nil {
-		return nil, err
+		unescaped, unescapeErr := strconv.Unquote("\"" + match + "\"")
+		if unescapeErr != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(unescaped), &questions); err != nil {
+			return nil, err
+		}
 	}
 
 	return questions, nil

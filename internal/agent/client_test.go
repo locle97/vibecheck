@@ -6,7 +6,7 @@ import (
 )
 
 func TestNew_UnknownBinary(t *testing.T) {
-	_, err := New("unknown")
+	_, err := New("unknown", "")
 	if err == nil {
 		t.Fatal("expected error for unknown binary")
 	}
@@ -15,7 +15,7 @@ func TestNew_UnknownBinary(t *testing.T) {
 func TestNew_KnownBinaries(t *testing.T) {
 	tests := []string{"claude", "cursor-agent", "opencode"}
 	for _, bin := range tests {
-		a, err := New(bin)
+		a, err := New(bin, "test-model")
 		if err != nil {
 			t.Errorf("binary %q: unexpected error: %v", bin, err)
 		}

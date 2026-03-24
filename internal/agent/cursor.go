@@ -11,10 +11,17 @@ import (
 // cursorAgent invokes the Cursor agent CLI.
 // Diff is piped via stdin; prompt is passed via -p flag.
 // Command: echo "<diff>" | cursor-agent -p "<prompt>" --output-format json
-type cursorAgent struct{}
+type cursorAgent struct {
+	model string
+}
 
 func (c *cursorAgent) Complete(ctx context.Context, prompt, diff string) (string, error) {
-	cmd := exec.CommandContext(ctx, "cursor-agent", "-p", prompt, "--output-format", "json")
+	args := []string{"-p", prompt, "--output-format", "json"}
+	if strings.TrimSpace(c.model) != "" {
+		args = append(args, "--model", c.model)
+	}
+
+	cmd := exec.CommandContext(ctx, "cursor-agent", args...)
 	cmd.Stdin = strings.NewReader(diff)
 
 	var stdout, stderr bytes.Buffer

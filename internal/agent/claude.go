@@ -12,7 +12,9 @@ import (
 // claudeAgent invokes the Claude Code CLI.
 // Diff is piped via stdin; prompt is passed via -p flag.
 // Command: echo "<diff>" | claude -p "<prompt>" --output-format json
-type claudeAgent struct{}
+type claudeAgent struct {
+	model string
+}
 
 type printEnvelope struct {
 	Type    string `json:"type"`
@@ -23,7 +25,12 @@ type printEnvelope struct {
 }
 
 func (c *claudeAgent) Complete(ctx context.Context, prompt, diff string) (string, error) {
-	cmd := exec.CommandContext(ctx, "claude", "-p", prompt, "--output-format", "json")
+	args := []string{"-p", prompt, "--output-format", "json"}
+	if strings.TrimSpace(c.model) != "" {
+		args = append(args, "--model", c.model)
+	}
+
+	cmd := exec.CommandContext(ctx, "claude", args...)
 	cmd.Stdin = strings.NewReader(diff)
 
 	var stdout, stderr bytes.Buffer

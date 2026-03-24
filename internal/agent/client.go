@@ -14,14 +14,14 @@ type Agent interface {
 }
 
 // New constructs the appropriate Agent from the binary name in config.
-func New(binary string) (Agent, error) {
+func New(binary, model string) (Agent, error) {
 	switch binary {
 	case "claude":
-		return &claudeAgent{}, nil
+		return &claudeAgent{model: model}, nil
 	case "opencode":
-		return &opencodeAgent{}, nil
+		return &opencodeAgent{model: model}, nil
 	case "cursor-agent":
-		return &cursorAgent{}, nil
+		return &cursorAgent{model: model}, nil
 	default:
 		return nil, fmt.Errorf("unsupported agent binary %q: must be one of: claude, opencode, cursor-agent", binary)
 	}

@@ -12,10 +12,18 @@ import (
 // opencodeAgent invokes the OpenCode CLI.
 // Diff is piped via stdin; prompt is passed as the final argument.
 // Command: echo "<diff>" | opencode run --format json "<prompt>"
-type opencodeAgent struct{}
+type opencodeAgent struct {
+	model string
+}
 
 func (o *opencodeAgent) Complete(ctx context.Context, prompt, diff string) (string, error) {
-	cmd := exec.CommandContext(ctx, "opencode", "run", "--format", "json", prompt)
+	args := []string{"run", "--format", "json"}
+	if strings.TrimSpace(o.model) != "" {
+		args = append(args, "--model", o.model)
+	}
+	args = append(args, prompt)
+
+	cmd := exec.CommandContext(ctx, "opencode", args...)
 	cmd.Stdin = strings.NewReader(diff)
 
 	var stdout, stderr bytes.Buffer

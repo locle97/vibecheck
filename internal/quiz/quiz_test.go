@@ -85,3 +85,14 @@ func TestParseQuestions_NoArray(t *testing.T) {
 		t.Fatal("expected error when no array found")
 	}
 }
+
+func TestParseQuestions_EscapedArray(t *testing.T) {
+	raw := `[{\"id\":1,\"question\":\"Why?\",\"options\":[\"A\",\"B\",\"C\",\"D\"],\"answer\":1}]`
+	qs, err := parseQuestions(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(qs) != 1 || qs[0].Question != "Why?" || qs[0].Answer != 1 {
+		t.Errorf("unexpected result: %+v", qs)
+	}
+}
