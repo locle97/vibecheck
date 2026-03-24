@@ -1,49 +1,64 @@
 # vibecheck
 
-> A terminal-based pre-commit self-awareness tool for developers.
+![Go Version](https://img.shields.io/badge/Go-1.25.7-00ADD8?logo=go)
+![CLI](https://img.shields.io/badge/interface-CLI-informational)
 
-**vibecheck** is a CLI + TUI application that helps you validate your understanding of staged changes before committing. It quizzes you on your own diff — so you actually know what you're shipping.
+`vibecheck` is a Go CLI that quizzes you on your staged git diff before you commit. It parses `git diff --cached`, sends the rendered change context to a coding-agent CLI, and prints multiple-choice questions to help verify that you understand what changed.
 
----
+## Project Name and Description
 
-## Why
+**vibecheck** is a local-first pre-commit comprehension tool for developers.
 
-Developers often:
+Primary purpose:
 
-- commit code without fully understanding all changes
-- overlook edge cases or unintended side effects
-- rely on code review to catch basic issues
-
-**vibecheck** introduces a lightweight, local-first habit:
-
-```bash
-vibecheck
-```
-
-It launches an interactive TUI session that walks you through your staged changes and checks your comprehension with agent-generated questions.
-
----
+- Reduce low-context commits by forcing a quick understanding check.
+- Turn staged diff review into a repeatable CLI workflow.
+- Keep the flow editor-agnostic and lightweight.
 
 ## Technology Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Language | Go |
-| CLI framework | [Cobra](https://github.com/spf13/cobra) |
-| TUI framework | [Bubble Tea](https://github.com/charmbracelet/bubbletea) |
-| TUI components | [Bubbles](https://github.com/charmbracelet/bubbles) |
-| Styling | [Lip Gloss](https://github.com/charmbracelet/lipgloss) |
-| Agent | Claude (Anthropic) |
+Primary stack (from `go.mod` and repository sources):
 
----
+| Layer | Technology | Version |
+| --- | --- | --- |
+| Language | Go | `1.25.7` |
+| CLI framework | [Cobra](https://github.com/spf13/cobra) | `v1.10.2` |
+| Config parsing | [BurntSushi/toml](https://github.com/BurntSushi/toml) | `v1.6.0` |
+| VCS integration | Git CLI (`git diff --cached`) | system-installed |
+| Agent providers | Claude CLI, Cursor Agent CLI, OpenCode CLI | system-installed |
+
+## Project Architecture
+
+High-level architecture:
+
+```text
+main.go
+  -> cmd/root.go (orchestration)
+      -> config.Load(...)          // provider/model selection
+      -> git.ParseStagedDiff()     // staged diff parsing into files/hunks/lines
+      -> agent.New(...)            // provider-specific CLI adapter
+      -> quiz.Generator            // prompt build + diff render + JSON parse
+      -> stdout                    // quiz questions + answers output
+```
+
+Design boundaries:
+
+- `cmd` wires and runs the end-to-end review flow.
+- `config` owns TOML defaults and loading behavior.
+- `internal/git` parses staged diff text into structured data.
+- `internal/agent` encapsulates external agent CLI calls and response normalization.
+- `internal/quiz` builds prompts, parses returned JSON, and classifies questions (`general` vs `hunk`).
 
 ## Getting Started
 
 ### Prerequisites
 
-- Go 1.21+
+- Go `1.25.7+`
 - Git
-- Anthropic API key (set `ANTHROPIC_API_KEY`)
+- At least one supported agent CLI available in `PATH`:
+  - `claude`
+  - `cursor-agent`
+  - `opencode`
 
 ### Install
 
@@ -51,7 +66,7 @@ It launches an interactive TUI session that walks you through your staged change
 go install github.com/locle97/vibecheck@latest
 ```
 
-### Build from source
+### Build From Source
 
 ```bash
 git clone https://github.com/locle97/vibecheck
@@ -59,112 +74,139 @@ cd vibecheck
 go build -o vibecheck .
 ```
 
-### Run
+### Configure
 
-```bash
-# Inside a git repo with staged changes
-git add <files>
-vibecheck
-```
+`vibecheck` reads `config.toml` in this order:
 
----
+1. Local `./config.toml` (if present)
+2. `~/.config/vibecheck/config.toml`
 
-## Usage
-
-```bash
-vibecheck    # launch TUI review session
-```
-
-### Behavior
-
-- **Inside a git repo with staged changes** — launches the interactive TUI
-- **No staged changes** — displays a message and exits gracefully
-- **Outside a git repo** — returns an error message
-
----
-
-## Project Structure
-
-```
-vibecheck/
-├── cmd/               # Cobra root command
-├── internal/
-│   ├── git/           # git diff parsing
-│   └── agent/         # coding agent interface
-├── tui/               # Bubble Tea models and views
-├── config/            # config loader
-├── main.go
-└── go.mod
-```
-
----
-
-## Configuration
-
-Config file: `~/.config/vibecheck/config.toml`
+Example config:
 
 ```toml
 [agent]
-provider = "claude"       # claude | cursor | opencode
+provider = "claude"        # claude | cursor-agent | opencode
 model    = "claude-opus-4-6"
 ```
 
-### Providers & models
+### Run
 
-| Provider | Example models |
-|----------|---------------|
-| `claude` | `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5` |
-| `cursor` | `cursor-small` |
-| `opencode` | any model supported by opencode |
+```bash
+git add <files>
+./vibecheck
+```
 
----
+Behavior:
 
-## Milestones
+- Inside a git repo with staged changes: generates and prints quiz questions.
+- No staged changes: prints guidance and exits.
+- Outside a git repo: returns an error from git parsing.
 
-### Phase 0 — Skeleton Project _(current)_
+## Project Structure
 
-Set up the foundational project structure with working CLI and TUI scaffolding.
+```text
+vibecheck/
+├── main.go
+├── cmd/
+│   ├── root.go
+│   └── root_test.go
+├── config/
+│   ├── config.go
+│   └── config_test.go
+├── internal/
+│   ├── agent/
+│   │   ├── client.go
+│   │   ├── claude.go
+│   │   ├── cursor.go
+│   │   ├── opencode.go
+│   │   └── client_test.go
+│   ├── git/
+│   │   ├── diff.go
+│   │   └── diff_test.go
+│   └── quiz/
+│       ├── quiz.go
+│       └── quiz_test.go
+├── AGENTS.md
+└── CLAUDE.md
+```
 
-- [ ] Initialize Go module
-- [ ] Set up Cobra CLI with single root command
-- [ ] Stub Bubble Tea app with a basic model/update/view loop
-- [ ] Wire `vibecheck` command to launch the TUI stub
-- [ ] Add `git diff --cached` integration (read staged changes)
-- [ ] Graceful exit when no staged changes detected
+## Key Features
 
-**Exit criteria:** `vibecheck` launches, detects staged changes, renders a placeholder TUI screen, and exits cleanly.
+- Parses staged diffs into structured files, hunks, and line kinds.
+- Generates multiple-choice comprehension questions via external coding-agent CLIs.
+- Supports provider/model selection via TOML config.
+- Handles mixed question ID formats (`1`, `"G1"`, `"H2"`) with fallback mapping.
+- Annotates questions as global or hunk-targeted for future richer UI use.
+- Includes defensive parsing for agent output wrappers/fences/NDJSON-like streams.
 
----
+## Development Workflow
 
-### Phase 1 — Quiz Flow _(planned)_
+Typical local workflow:
 
-Implement the core comprehension quiz driven by staged diff hunks.
+```bash
+gofmt -w .
+go vet ./...
+go test ./...
+go build -o vibecheck .
+```
 
-- [ ] Parse diff into logical hunks
-- [ ] Integrate coding agent to generate questions per hunk
-- [ ] Build quiz TUI (question display, answer input, scoring)
-- [ ] Show pass/fail summary at end of session
+Repository workflow conventions:
 
----
+- Keep `main.go` thin; place orchestration in `cmd`.
+- Preserve package boundaries across `config`, `internal/git`, `internal/agent`, and `internal/quiz`.
+- Add or update tests for behavior changes.
+- Prefer small, targeted changes and explicit error wrapping.
 
-### Phase 2 — Git Hook Integration _(future)_
+## Coding Standards
 
-- [ ] Optional `vibecheck install-hook` to wire into `pre-commit`
-- [ ] Block commit on quiz failure (opt-in)
+Key conventions used in this repository:
 
----
+- Use `gofmt` and idiomatic Go import ordering.
+- Prefer short functions and early returns.
+- Return wrapped errors with context (`%w`) instead of panics.
+- Use deterministic tests and clear assertion messages.
+- Keep parsing resilient to provider output variations.
 
-## Non-Goals (v0.1)
+Detailed guidance: `AGENTS.md` and `CLAUDE.md`.
 
-- Commit blocking
-- Team dashboards / analytics
-- Cloud sync
-- File filtering / partial review
+## Testing
 
----
+Test strategy:
 
-## Key Characteristics
+- Unit-test focused across all core packages.
+- Fake dependencies for command and agent layers.
+- Parser tests cover normal and edge cases (empty diff, multi-hunk, wrapped/escaped JSON).
 
-- **Local-first** — runs entirely on your machine
-- **Editor-agnostic** — works in any terminal
-- **Single binary** — no external runtime dependencies beyond API key
+Run tests:
+
+```bash
+go test ./...
+```
+
+Run package-specific tests:
+
+```bash
+go test ./cmd
+go test ./config
+go test ./internal/git
+go test ./internal/agent
+go test ./internal/quiz
+```
+
+## Contributing
+
+Contributions are welcome. To keep changes aligned with project conventions:
+
+1. Follow package boundaries and keep orchestration in `cmd`.
+2. Add tests with any behavior change.
+3. Run formatting, vet, and tests before opening a PR.
+4. Use existing patterns in `internal/*_test.go` as exemplars.
+
+Supporting docs:
+
+- `AGENTS.md`
+- `CLAUDE.md`
+
+## License
+
+No license file is currently present in this repository. Add a `LICENSE` file to define usage terms.

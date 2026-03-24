@@ -7,6 +7,8 @@ Guide for coding agents operating in `vibecheck`.
 - Project: Go CLI for reviewing staged git diffs and generating comprehension quiz questions.
 - Module: `github.com/locle97/vibecheck`.
 - Primary packages: `cmd`, `config`, `internal/git`, `internal/agent`, `internal/quiz`.
+- Current UX is CLI output (no checked-in `tui/` package yet).
+- `internal/quiz` now annotates questions as general vs hunk-targeted (`QuestionKind`, `TargetHunkIdx`) for future split-pane TUI work.
 - Keep edits minimal, targeted, and consistent with existing package boundaries.
 
 ## Build / Run / Lint / Test
@@ -76,7 +78,7 @@ go test -v ./internal/quiz -run TestParseQuestions_MarkdownFenced -count=1
 - `config/` owns config parsing/defaults; avoid spreading config logic elsewhere.
 - `internal/git/` should remain focused on diff parsing and avoid UI/agent concerns.
 - `internal/agent/` should encapsulate external CLI calls and output normalization.
-- `internal/quiz/` should build prompts, render diff context, and parse returned JSON.
+- `internal/quiz/` should build prompts, render diff context, parse returned JSON, and classify questions for hunk mapping.
 - Avoid circular dependencies; prefer small, explicit interfaces.
 
 ## Go Code Style
@@ -127,6 +129,8 @@ go test -v ./internal/quiz -run TestParseQuestions_MarkdownFenced -count=1
 
 - Trim/sanitize raw model output before decoding.
 - Keep defensive parsing behavior for envelope/fallback formats.
+- Preserve compatibility for question `id` values returned as either number (`1`) or string (`"G1"`, `"H2"`).
+- Prefer prompting providers to emit explicit IDs (`G*` for general, `H*` for hunk-specific); keep fallback order-based mapping intact.
 - Avoid breaking existing JSON response parsing without corresponding test updates.
 
 ## Testing Guidelines
