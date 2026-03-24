@@ -82,7 +82,7 @@ func newRootCmd(out io.Writer, deps rootDeps) *cobra.Command {
 			}
 
 			for _, q := range questions {
-				fmt.Fprintf(out, "%d) %s\n", q.ID, q.Question)
+				fmt.Fprintf(out, "%s) %s\n", q.DisplayID(), q.Question)
 				for i, option := range q.Options {
 					fmt.Fprintf(out, "  %c. %s\n", optionLabel(i), option)
 				}
