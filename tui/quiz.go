@@ -12,8 +12,50 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// QuizModel is the full-screen quiz view.
-// All questions are MCQ, graded locally against the 0-based answer index.
+// hunkEntry is a flattened view of a single hunk across all files.
+type hunkEntry struct {
+	filePath string
+	rawDiff  string // header + lines as raw diff text for DiffView
+}
+
+// flattenHunks converts []git.File into a linear slice of hunkEntry values.
+func flattenHunks(files []git.File) []hunkEntry {
+	var result []hunkEntry
+	for _, f := range files {
+		for _, h := range f.Hunks {
+			var sb strings.Builder
+			sb.WriteString(h.Header)
+			sb.WriteString("\n")
+			for _, l := range h.Lines {
+				sb.WriteString(l.Content)
+				sb.WriteString("\n")
+			}
+			result = append(result, hunkEntry{
+				filePath: f.Path,
+				rawDiff:  sb.String(),
+			})
+		}
+	}
+	return result
+}
+
+// fullDiff renders all hunks concatenated for general questions.
+func fullDiff(hunks []hunkEntry) string {
+	var sb strings.Builder
+	curFile := ""
+	for _, h := range hunks {
+		if h.filePath != curFile {
+			curFile = h.filePath
+			fmt.Fprintf(&sb, "=== %s ===\n", curFile)
+		}
+		sb.WriteString(h.rawDiff)
+		sb.WriteString("\n")
+	}
+	return sb.String()
+}
+
+// QuizModel is the split-pane quiz view.
+// Left pane shows the relevant diff; right pane shows the MCQ question and options.
 type QuizModel struct {
 	questions  []quiz.Question
 	current    int
@@ -26,6 +68,8 @@ type QuizModel struct {
 	feedback   string
 	gen        *quiz.Generator
 	files      []git.File
+	hunks      []hunkEntry
+	diffView   DiffView
 	width      int
 	height     int
 	err        string
@@ -42,6 +86,7 @@ func NewQuizModel(files []git.File, gen *quiz.Generator, passThreshold float64, 
 	}
 	return QuizModel{
 		files:      files,
+		hunks:      flattenHunks(files),
 		gen:        gen,
 		passThresh: passThreshold,
 		width:      width,
@@ -63,6 +108,30 @@ func (m QuizModel) fetchQuestionsCmd() tea.Cmd {
 	}
 }
 
+// syncDiffView updates the DiffView to match the current question's context.
+func (m *QuizModel) syncDiffView() {
+	if len(m.questions) == 0 || m.current >= len(m.questions) {
+		return
+	}
+	q := m.questions[m.current]
+	var raw string
+	if q.Kind == quiz.QuestionKindHunk && q.TargetHunkIdx > 0 && q.TargetHunkIdx <= len(m.hunks) {
+		h := m.hunks[q.TargetHunkIdx-1]
+		raw = fmt.Sprintf("=== %s ===\n%s", h.filePath, h.rawDiff)
+	} else {
+		raw = fullDiff(m.hunks)
+	}
+	leftW := m.width/2 - 3
+	if leftW < 10 {
+		leftW = 10
+	}
+	innerH := m.height - 6
+	if innerH < 3 {
+		innerH = 3
+	}
+	m.diffView = NewDiffView(raw, leftW, innerH)
+}
+
 func (m QuizModel) Update(msg tea.Msg) (QuizModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case quizQuestionsMsg:
@@ -79,6 +148,7 @@ func (m QuizModel) Update(msg tea.Msg) (QuizModel, tea.Cmd) {
 		m.current = 0
 		m.selected = 0
 		m.correct = 0
+		m.syncDiffView()
 
 	case tea.KeyMsg:
 		if m.loading {
@@ -99,6 +169,7 @@ func (m QuizModel) Update(msg tea.Msg) (QuizModel, tea.Cmd) {
 						return QuizDoneMsg{Score: score, Passed: passed}
 					}
 				}
+				m.syncDiffView()
 			}
 			return m, nil
 		}
@@ -117,6 +188,10 @@ func (m QuizModel) Update(msg tea.Msg) (QuizModel, tea.Cmd) {
 			if m.selected < len(q.Options)-1 {
 				m.selected++
 			}
+		case "ctrl+u":
+			m.diffView.ScrollUp()
+		case "ctrl+d":
+			m.diffView.ScrollDown()
 		case "enter":
 			correct := m.selected == q.Answer
 			m.showResult = true
@@ -135,6 +210,7 @@ func (m QuizModel) Update(msg tea.Msg) (QuizModel, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.syncDiffView()
 	}
 	return m, nil
 }
@@ -144,6 +220,7 @@ func (m QuizModel) View() string {
 		return "vibecheck — loading…"
 	}
 
+	// Loading screen (questions not yet arrived).
 	if m.loading && len(m.questions) == 0 {
 		return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214")).
 			Render(" vibecheck • Quiz ") + "\n\n  Generating quiz questions…"
@@ -155,24 +232,40 @@ func (m QuizModel) View() string {
 		qNum = total
 	}
 	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214")).
-		Render(fmt.Sprintf(" vibecheck • Quiz • Q %d/%d ", qNum, total))
+		Render(fmt.Sprintf(" vibecheck • Quiz • Q %d/%d   Score: %d/%d ", qNum, total, m.correct, m.current))
 
-	progress := lipgloss.NewStyle().Faint(true).Render(fmt.Sprintf("  Score so far: %d/%d", m.correct, m.current))
 	if m.err != "" {
-		progress += "\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("  Error: "+m.err)
+		errLine := lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("  Error: " + m.err)
+		return lipgloss.JoinVertical(lipgloss.Left, title, errLine)
 	}
 
 	if m.current >= total {
-		return lipgloss.JoinVertical(lipgloss.Left, title, progress)
+		return lipgloss.JoinVertical(lipgloss.Left, title)
 	}
 
+	leftW := m.width/2 - 3
+	if leftW < 10 {
+		leftW = 10
+	}
+	rightW := m.width - leftW - 6
+	if rightW < 10 {
+		rightW = 10
+	}
+	innerH := m.height - 6
+	if innerH < 3 {
+		innerH = 3
+	}
+
+	// Left pane: diff.
+	leftPane := lipgloss.NewStyle().
+		Width(leftW).Height(innerH).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		Padding(0, 1).
+		Render(m.diffView.Render())
+
+	// Right pane: question + options or result.
 	q := m.questions[m.current]
-
-	var kindBadge string
-	if q.Kind == quiz.QuestionKindHunk {
-		kindBadge = lipgloss.NewStyle().Faint(true).Render(fmt.Sprintf("  [hunk %d]", q.TargetHunkIdx))
-	}
-
 	qText := lipgloss.NewStyle().Bold(true).Render("Q: " + q.Question)
 
 	var body string
@@ -203,25 +296,21 @@ func (m QuizModel) View() string {
 		body = strings.Join(opts, "\n")
 	}
 
-	cardW := m.width - 6
-	if cardW < 20 {
-		cardW = 20
-	}
-	cardContent := lipgloss.JoinVertical(lipgloss.Left, qText, "", body)
-	if kindBadge != "" {
-		cardContent = lipgloss.JoinVertical(lipgloss.Left, qText, kindBadge, "", body)
-	}
-	card := lipgloss.NewStyle().
-		Width(cardW).
+	rightContent := lipgloss.JoinVertical(lipgloss.Left, qText, "", body)
+	rightPane := lipgloss.NewStyle().
+		Width(rightW).Height(innerH).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("214")).
 		Padding(1, 2).
-		Render(cardContent)
+		Render(rightContent)
+
+	body2 := lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
 
 	var footer string
 	if !m.showResult {
-		footer = lipgloss.NewStyle().Faint(true).Render(" ↑↓/jk: select • enter: confirm • ctrl+c: abort")
+		footer = lipgloss.NewStyle().Faint(true).
+			Render(" ctrl+u/ctrl+d: scroll diff • ↑↓/jk: select • enter: confirm • ctrl+c: abort")
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, title, progress, "", card, footer)
+	return lipgloss.JoinVertical(lipgloss.Left, title, body2, footer)
 }
