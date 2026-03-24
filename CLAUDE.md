@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**vibecheck** is a Go CLI + TUI tool that quizzes developers on their staged git diff before committing. It parses `git diff --cached`, walks through hunks interactively via a Bubble Tea TUI, and checks comprehension through annotation, Socratic Q&A, and quiz phases powered by an LLM backend.
+**vibecheck** is a Go CLI + TUI tool that quizzes developers on their staged git diff before committing. It parses `git diff --cached`, walks through hunks interactively via a Bubble Tea TUI, and checks comprehension through a coding agent (Claude) that generates contextual questions about the diff.
 
 ## Commands
 
@@ -13,10 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 go build -o vibecheck .
 
 # Run
-./vibecheck review          # manual TUI review session (requires staged changes)
-./vibecheck commit          # wraps git commit with vibecheck review gate
-./vibecheck install         # sets up git pre-commit hook
-./vibecheck version         # show version info
+./vibecheck          # launch TUI review session (requires staged changes)
 
 # Test (all)
 go test ./...
@@ -36,35 +33,17 @@ go vet ./...
 ```
 vibecheck/
 ├── main.go                  # entry point — calls cmd.Execute()
-├── cmd/                     # Cobra commands
-│   ├── root.go              # root command, global flags
-│   ├── commit.go            # vibecheck commit — wraps git commit
-│   ├── review.go            # vibecheck review — manual trigger
-│   └── install.go           # vibecheck install — sets up git hook
+├── cmd/
+│   └── root.go              # root command — single entry point, no subcommands
 ├── internal/
 │   ├── git/
-│   │   ├── diff.go          # parse staged hunks from `git diff --cached`
-│   │   └── hook.go          # hook installer / uninstaller
-│   ├── session/
-│   │   ├── session.go       # session struct and state machine
-│   │   ├── local.go         # .vibecheck/<hash>.json (per-repo persistence)
-│   │   └── global.go        # ~/.vibecheck/history.jsonl (cross-repo log)
-│   ├── llm/
-│   │   ├── client.go        # backend interface (Client, GenerateQuestion, etc.)
-│   │   ├── ollama.go        # Ollama backend
-│   │   ├── openai.go        # OpenAI backend
-│   │   └── anthropic.go     # Anthropic backend
-│   └── phases/
-│       ├── annotation.go    # annotation phase logic
-│       ├── socratic.go      # Socratic Q&A phase logic
-│       └── quiz.go          # quiz phase logic (MCQ + short answer)
+│   │   └── diff.go          # parse staged hunks from `git diff --cached`
+│   └── agent/
+│       └── client.go        # coding agent interface (generates questions from diff)
 ├── tui/
 │   ├── app.go               # Bubble Tea root model, phase router
 │   ├── diff_view.go         # syntax-highlighted diff panel
-│   ├── annotation.go        # annotation input view
-│   ├── socratic.go          # Q&A conversation view
-│   ├── quiz.go              # quiz view
-│   └── summary.go           # post-review result summary
+│   └── quiz.go              # quiz view (question display, answer input, scoring)
 └── config/
     └── config.go            # ~/.config/vibecheck/config.toml loader
 ```
@@ -72,8 +51,8 @@ vibecheck/
 ## Key Conventions
 
 - **TDD**: write tests first, then implement. All `internal/` packages need `_test.go` covering the public API before the implementation is written.
-- **Cobra**: one command per file in `cmd/`, registered via `init()`.
+- **Single root command**: `vibecheck` runs directly with no subcommands. The root `RunE` owns the full review flow.
 - **Bubble Tea**: strict Elm architecture — `Model` is immutable, return new copies from `Update`, side effects via `tea.Cmd`. `tui/app.go` owns the phase router and dispatches to sub-models.
-- **LLM backends**: all backends implement the `client.go` interface; callers never import a specific backend directly.
-- **`internal/git`** must not import TUI or LLM packages. `tui/` and `phases/` may import `internal/git` for diff types.
+- **Coding agent**: `internal/agent/client.go` defines the provider-agnostic interface for question generation. Supported providers: `claude`, `cursor`, `opencode`. Callers never depend on a specific provider or model directly.
+- **`internal/git`** must not import TUI or agent packages. `tui/` may import `internal/git` for diff types.
 - **Config**: loaded once at startup from `~/.config/vibecheck/config.toml`; passed down via dependency injection, not global state.

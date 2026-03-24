@@ -20,7 +20,7 @@ Developers often:
 vibecheck
 ```
 
-It launches an interactive TUI session that walks you through your staged changes and checks your comprehension with a quiz.
+It launches an interactive TUI session that walks you through your staged changes and checks your comprehension with agent-generated questions.
 
 ---
 
@@ -33,6 +33,7 @@ It launches an interactive TUI session that walks you through your staged change
 | TUI framework | [Bubble Tea](https://github.com/charmbracelet/bubbletea) |
 | TUI components | [Bubbles](https://github.com/charmbracelet/bubbles) |
 | Styling | [Lip Gloss](https://github.com/charmbracelet/lipgloss) |
+| Agent | Claude (Anthropic) |
 
 ---
 
@@ -42,6 +43,7 @@ It launches an interactive TUI session that walks you through your staged change
 
 - Go 1.21+
 - Git
+- Anthropic API key (set `ANTHROPIC_API_KEY`)
 
 ### Install
 
@@ -70,8 +72,7 @@ vibecheck
 ## Usage
 
 ```bash
-vibecheck              # launch TUI review session
-vibecheck version      # show version info
+vibecheck    # launch TUI review session
 ```
 
 ### Behavior
@@ -86,13 +87,35 @@ vibecheck version      # show version info
 
 ```
 vibecheck/
-├── cmd/               # Cobra commands (root, version)
+├── cmd/               # Cobra root command
 ├── internal/
 │   ├── git/           # git diff parsing
-│   └── tui/           # Bubble Tea models and views
+│   └── agent/         # coding agent interface
+├── tui/               # Bubble Tea models and views
+├── config/            # config loader
 ├── main.go
 └── go.mod
 ```
+
+---
+
+## Configuration
+
+Config file: `~/.config/vibecheck/config.toml`
+
+```toml
+[agent]
+provider = "claude"       # claude | cursor | opencode
+model    = "claude-opus-4-6"
+```
+
+### Providers & models
+
+| Provider | Example models |
+|----------|---------------|
+| `claude` | `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5` |
+| `cursor` | `cursor-small` |
+| `opencode` | any model supported by opencode |
 
 ---
 
@@ -103,7 +126,7 @@ vibecheck/
 Set up the foundational project structure with working CLI and TUI scaffolding.
 
 - [ ] Initialize Go module
-- [ ] Set up Cobra CLI with `root` and `version` commands
+- [ ] Set up Cobra CLI with single root command
 - [ ] Stub Bubble Tea app with a basic model/update/view loop
 - [ ] Wire `vibecheck` command to launch the TUI stub
 - [ ] Add `git diff --cached` integration (read staged changes)
@@ -118,20 +141,13 @@ Set up the foundational project structure with working CLI and TUI scaffolding.
 Implement the core comprehension quiz driven by staged diff hunks.
 
 - [ ] Parse diff into logical hunks
-- [ ] Generate questions per hunk
+- [ ] Integrate coding agent to generate questions per hunk
 - [ ] Build quiz TUI (question display, answer input, scoring)
 - [ ] Show pass/fail summary at end of session
 
 ---
 
-### Phase 2 — LLM-Powered Questions _(future)_
-
-- [ ] Integrate LLM to generate adaptive, context-aware questions
-- [ ] Support local model (Ollama) and remote API options
-
----
-
-### Phase 3 — Git Hook Integration _(future)_
+### Phase 2 — Git Hook Integration _(future)_
 
 - [ ] Optional `vibecheck install-hook` to wire into `pre-commit`
 - [ ] Block commit on quiz failure (opt-in)
@@ -140,7 +156,6 @@ Implement the core comprehension quiz driven by staged diff hunks.
 
 ## Non-Goals (v0.1)
 
-- Git hook automation
 - Commit blocking
 - Team dashboards / analytics
 - Cloud sync
@@ -150,7 +165,6 @@ Implement the core comprehension quiz driven by staged diff hunks.
 
 ## Key Characteristics
 
-- **Manual-first** — no git hook integration yet
 - **Local-first** — runs entirely on your machine
 - **Editor-agnostic** — works in any terminal
-- **Single binary** — no external runtime dependencies
+- **Single binary** — no external runtime dependencies beyond API key
