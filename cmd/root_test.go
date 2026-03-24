@@ -23,6 +23,7 @@ func (f fakeAgent) Complete(ctx context.Context, prompt, diff string) (string, e
 
 func TestRootCommand_ExecutesFullFlow(t *testing.T) {
 	var buf bytes.Buffer
+	var tuiCalled bool
 	deps := rootDeps{
 		loadConfig: func(path string) (config.Config, error) {
 			return config.Config{Agent: config.AgentConfig{Provider: config.ProviderClaude, Model: "claude-opus-4-6"}}, nil
@@ -42,18 +43,21 @@ func TestRootCommand_ExecutesFullFlow(t *testing.T) {
 			}}, nil
 		},
 		newGenerator: quiz.New,
+		runTUI: func(files []git.File, gen *quiz.Generator, cfg config.Config) error {
+			tuiCalled = true
+			if len(files) == 0 {
+				t.Fatal("runTUI received empty files")
+			}
+			return nil
+		},
 	}
 
 	root := newRootCmd(&buf, deps)
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-
-	got := buf.String()
-	for _, want := range []string{"Provider: claude", "What changed?", "Answer: C. C"} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("output should contain %q, got: %q", want, got)
-		}
+	if !tuiCalled {
+		t.Fatal("runTUI was not called")
 	}
 }
 
@@ -71,6 +75,10 @@ func TestRootCommand_NoStagedChanges(t *testing.T) {
 			return nil, nil
 		},
 		newGenerator: quiz.New,
+		runTUI: func(files []git.File, gen *quiz.Generator, cfg config.Config) error {
+			t.Fatal("runTUI should not be called when no staged changes")
+			return nil
+		},
 	}
 
 	root := newRootCmd(&buf, deps)
@@ -94,6 +102,7 @@ func TestRootCommand_ParseDiffError(t *testing.T) {
 		},
 		newAgent:     func(binary, model string) (agent.Agent, error) { return nil, nil },
 		newGenerator: quiz.New,
+		runTUI:       func(files []git.File, gen *quiz.Generator, cfg config.Config) error { return nil },
 	}
 
 	root := newRootCmd(&buf, deps)

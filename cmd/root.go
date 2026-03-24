@@ -1,17 +1,19 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/spf13/cobra"
+
 	"github.com/locle97/vibecheck/config"
 	"github.com/locle97/vibecheck/internal/agent"
 	"github.com/locle97/vibecheck/internal/git"
 	"github.com/locle97/vibecheck/internal/quiz"
-	"github.com/spf13/cobra"
+	"github.com/locle97/vibecheck/tui"
 )
 
 type rootDeps struct {
@@ -19,6 +21,7 @@ type rootDeps struct {
 	parseStagedDiff func() ([]git.File, error)
 	newAgent        func(binary, model string) (agent.Agent, error)
 	newGenerator    func(a agent.Agent) *quiz.Generator
+	runTUI          func(files []git.File, gen *quiz.Generator, cfg config.Config) error
 }
 
 func defaultRootDeps() rootDeps {
@@ -27,11 +30,25 @@ func defaultRootDeps() rootDeps {
 		parseStagedDiff: git.ParseStagedDiff,
 		newAgent:        agent.New,
 		newGenerator:    quiz.New,
+		runTUI:          defaultRunTUI,
 	}
 }
 
-// NewRootCmd returns the root cobra command. out is used for command output,
-// allowing tests to capture it.
+func defaultRunTUI(files []git.File, gen *quiz.Generator, cfg config.Config) error {
+	app := tui.NewApp(files, gen, cfg)
+	p := tea.NewProgram(app, tea.WithAltScreen())
+	m, err := p.Run()
+	if err != nil {
+		return fmt.Errorf("tui: %w", err)
+	}
+	if finalApp, ok := m.(tui.App); ok && !finalApp.Passed() {
+		return fmt.Errorf("vibecheck: review failed")
+	}
+	return nil
+}
+
+// NewRootCmd returns the root cobra command. out is used for non-TUI output
+// (errors, no-staged-changes message), allowing tests to capture it.
 func NewRootCmd(out io.Writer) *cobra.Command {
 	return newRootCmd(out, defaultRootDeps())
 }
@@ -62,42 +79,8 @@ func newRootCmd(out io.Writer, deps rootDeps) *cobra.Command {
 				return fmt.Errorf("create agent: %w", err)
 			}
 
-			generator := deps.newGenerator(a)
-			ctx := cmd.Context()
-			if ctx == nil {
-				ctx = context.Background()
-			}
-
-			questions, err := generator.GenerateQuestions(ctx, files)
-			if err != nil {
-				return fmt.Errorf("generate questions: %w", err)
-			}
-
-			fmt.Fprintf(out, "Provider: %s | Model: %s\n", cfg.Agent.Provider, cfg.Agent.Model)
-			fmt.Fprintf(out, "Parsed %d changed file(s), generated %d question(s).\n\n", len(files), len(questions))
-
-			if len(questions) == 0 {
-				fmt.Fprintln(out, "No questions returned by agent.")
-				return nil
-			}
-
-			for _, q := range questions {
-				fmt.Fprintf(out, "%s) %s\n", q.DisplayID(), q.Question)
-				for i, option := range q.Options {
-					fmt.Fprintf(out, "  %c. %s\n", optionLabel(i), option)
-				}
-				if q.Answer >= 0 && q.Answer < len(q.Options) {
-					fmt.Fprintf(out, "  Answer: %c. %s\n", optionLabel(q.Answer), q.Options[q.Answer])
-				} else {
-					fmt.Fprintln(out, "  Answer: (invalid answer index from agent)")
-				}
-				if q.Hint != "" {
-					fmt.Fprintf(out, "  Hint: %s\n", q.Hint)
-				}
-				fmt.Fprintln(out)
-			}
-
-			return nil
+			gen := deps.newGenerator(a)
+			return deps.runTUI(files, gen, cfg)
 		},
 	}
 	root.SetOut(out)
@@ -116,11 +99,4 @@ func defaultConfigPath() string {
 		return "config.toml"
 	}
 	return filepath.Join(configDir, "vibecheck", "config.toml")
-}
-
-func optionLabel(idx int) byte {
-	if idx < 0 || idx > 25 {
-		return '?'
-	}
-	return byte('A' + idx)
 }
