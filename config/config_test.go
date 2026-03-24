@@ -26,7 +26,7 @@ func TestLoadConfig_FromFile(t *testing.T) {
 	path := filepath.Join(dir, "config.toml")
 	content := `
 [agent]
-provider = "cursor"
+provider = "cursor-agent"
 model    = "cursor-small"
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {

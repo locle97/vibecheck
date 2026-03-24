@@ -12,7 +12,7 @@ type Provider string
 
 const (
 	ProviderClaude    Provider = "claude"
-	ProviderCursor    Provider = "cursor"
+	ProviderCursor    Provider = "cursor-agent"
 	ProviderOpenCode  Provider = "opencode"
 )
 
