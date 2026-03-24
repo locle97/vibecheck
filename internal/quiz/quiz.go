@@ -152,7 +152,6 @@ var (
 
 func parseQuestions(raw string) ([]Question, error) {
 	raw = strings.TrimSpace(raw)
-	fmt.Print("Raw agent output:\n", raw, "\n---\n")
 	if strings.HasPrefix(raw, "```") {
 		if idx := strings.Index(raw, "\n"); idx != -1 {
 			raw = raw[idx+1:]
