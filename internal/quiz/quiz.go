@@ -28,17 +28,19 @@ type Question struct {
 	Options       []string     `json:"options"`
 	Answer        int          `json:"answer"`
 	Hint          string       `json:"hint,omitempty"`
+	Explanation   string       `json:"explanation,omitempty"`
 	Kind          QuestionKind `json:"-"`
 	TargetHunkIdx int          `json:"-"` // 1-based index in flattened diff hunk order
 }
 
 func (q *Question) UnmarshalJSON(data []byte) error {
 	type wireQuestion struct {
-		ID       json.RawMessage `json:"id"`
-		Question string          `json:"question"`
-		Options  []string        `json:"options"`
-		Answer   int             `json:"answer"`
-		Hint     string          `json:"hint,omitempty"`
+		ID          json.RawMessage `json:"id"`
+		Question    string          `json:"question"`
+		Options     []string        `json:"options"`
+		Answer      int             `json:"answer"`
+		Hint        string          `json:"hint,omitempty"`
+		Explanation string          `json:"explanation,omitempty"`
 	}
 
 	var wire wireQuestion
@@ -50,6 +52,7 @@ func (q *Question) UnmarshalJSON(data []byte) error {
 	q.Options = wire.Options
 	q.Answer = wire.Answer
 	q.Hint = wire.Hint
+	q.Explanation = wire.Explanation
 
 	if len(wire.ID) == 0 {
 		return nil
@@ -114,15 +117,17 @@ func (g *Generator) GenerateQuestions(ctx context.Context, files []git.File) ([]
 func buildPrompt() string {
 	var sb strings.Builder
 	sb.WriteString("You are reviewing a staged git diff before the developer commits.\n")
-	sb.WriteString("Generate multiple-choice quiz questions that test the developer's understanding of exactly what changed and why.\n")
+	sb.WriteString("Generate simple, straightforward multiple-choice questions that verify the developer read and understood the changes.\n")
+	sb.WriteString("Questions should be factual and directly answerable from the diff — avoid trick questions, ambiguous wording, or testing obscure edge cases.\n")
 	sb.WriteString("Create 3-5 overall questions about the broader structure/workflow of the change.\n")
 	sb.WriteString("Also create exactly one question per diff hunk for hunk-level understanding.\n")
 	sb.WriteString("Order questions strictly by file flow: all overall questions first, then hunk-specific questions in the same file and hunk order shown in the diff.\n")
 	sb.WriteString("Use id format G1..Gn for overall questions and H1..Hm for hunk-specific questions where Hk maps to the k-th hunk in the rendered diff order.\n")
 	sb.WriteString("Each hunk-specific question should clearly anchor to that specific hunk (file path and hunk context).\n")
-	sb.WriteString("Each question must have exactly 4 options and one correct answer.\n\n")
+	sb.WriteString("Each question must have exactly 4 options and one correct answer.\n")
+	sb.WriteString("For each question, include an \"explanation\" field: a brief, clear explanation of why the correct answer is right, shown to the developer when they answer incorrectly.\n\n")
 	sb.WriteString("Return ONLY a JSON array - no markdown fences, no prose - using this exact shape:\n")
-	sb.WriteString(`[{"id":"G1","question":"...","options":["choice A","choice B","choice C","choice D"],"answer":0,"hint":"optional"}]`)
+	sb.WriteString(`[{"id":"G1","question":"...","options":["choice A","choice B","choice C","choice D"],"answer":0,"hint":"optional","explanation":"why the correct answer is right"}]`)
 	sb.WriteString("\n\"answer\" is the 0-based index of the correct option.")
 	return sb.String()
 }

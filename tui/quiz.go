@@ -205,6 +205,9 @@ func (m QuizModel) Update(msg tea.Msg) (QuizModel, tea.Cmd) {
 					answer = q.Options[q.Answer]
 				}
 				m.feedback = fmt.Sprintf("Incorrect. The answer was: %s", answer)
+				if q.Explanation != "" {
+					m.feedback += "\n" + q.Explanation
+				}
 			}
 		}
 
