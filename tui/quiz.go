@@ -39,16 +39,15 @@ func flattenHunks(files []git.File) []hunkEntry {
 	return result
 }
 
-// firstHunkPerFile renders the first hunk of each file for general questions.
-func firstHunkPerFile(hunks []hunkEntry) string {
+// fullDiff renders all hunks concatenated for general questions.
+func fullDiff(hunks []hunkEntry) string {
 	var sb strings.Builder
-	seen := make(map[string]bool)
+	curFile := ""
 	for _, h := range hunks {
-		if seen[h.filePath] {
-			continue
+		if h.filePath != curFile {
+			curFile = h.filePath
+			fmt.Fprintf(&sb, "=== %s ===\n", curFile)
 		}
-		seen[h.filePath] = true
-		fmt.Fprintf(&sb, "=== %s ===\n", h.filePath)
 		sb.WriteString(h.rawDiff)
 		sb.WriteString("\n")
 	}
@@ -120,7 +119,7 @@ func (m *QuizModel) syncDiffView() {
 		h := m.hunks[q.TargetHunkIdx-1]
 		raw = fmt.Sprintf("=== %s ===\n%s", h.filePath, h.rawDiff)
 	} else {
-		raw = firstHunkPerFile(m.hunks)
+		raw = fullDiff(m.hunks)
 	}
 	leftW := m.width/2 - 3
 	if leftW < 10 {
