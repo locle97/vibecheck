@@ -14,22 +14,26 @@ type AppPhase int
 const (
 	AppPhaseQuiz AppPhase = iota
 	AppPhaseSummary
+	AppPhaseCommit
 )
 
 // App is the root Bubbletea model. It routes messages to the active sub-model.
 type App struct {
-	phase       AppPhase
-	width       int
-	height      int
-	initialized bool
-	files       []git.File
-	cfg         config.Config
-	gen         *quiz.Generator
-	quizScore   float64
-	passed      bool
+	phase            AppPhase
+	width            int
+	height           int
+	initialized      bool
+	files            []git.File
+	cfg              config.Config
+	gen              *quiz.Generator
+	quizScore        float64
+	passed           bool
+	commitConfirmed  bool
+	commitMessage    string
 
 	quiz    QuizModel
 	summary SummaryModel
+	commit  CommitModel
 }
 
 func NewApp(files []git.File, gen *quiz.Generator, cfg config.Config) App {
@@ -43,6 +47,12 @@ func NewApp(files []git.File, gen *quiz.Generator, cfg config.Config) App {
 
 // Passed returns whether the review was passed. Valid after the program exits.
 func (a App) Passed() bool { return a.passed }
+
+// CommitConfirmed returns whether the user confirmed the commit message.
+func (a App) CommitConfirmed() bool { return a.commitConfirmed }
+
+// CommitMessage returns the generated commit message the user confirmed.
+func (a App) CommitMessage() string { return a.commitMessage }
 
 func (a App) Init() tea.Cmd { return nil }
 
@@ -65,7 +75,15 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case QuizDoneMsg:
 		a.quizScore = msg.Score
 		a.passed = msg.Passed
+		if msg.Passed {
+			return a.startPhase(AppPhaseCommit)
+		}
 		return a.startPhase(AppPhaseSummary)
+
+	case CommitConfirmedMsg:
+		a.commitConfirmed = true
+		a.commitMessage = msg.Message
+		return a, tea.Quit
 	}
 
 	return a.routeToActive(msg)
@@ -81,6 +99,10 @@ func (a App) routeToActive(msg tea.Msg) (tea.Model, tea.Cmd) {
 		upd, cmd := a.summary.Update(msg)
 		a.summary = upd
 		return a, cmd
+	case AppPhaseCommit:
+		upd, cmd := a.commit.Update(msg)
+		a.commit = upd
+		return a, cmd
 	}
 	return a, nil
 }
@@ -94,6 +116,8 @@ func (a App) View() string {
 		return a.quiz.View()
 	case AppPhaseSummary:
 		return a.summary.View()
+	case AppPhaseCommit:
+		return a.commit.View()
 	}
 	return ""
 }
@@ -107,6 +131,9 @@ func (a App) startPhase(phase AppPhase) (App, tea.Cmd) {
 	case AppPhaseSummary:
 		a.summary = NewSummaryModel(a.quizScore, a.passed, a.cfg.Review.PassThreshold, a.width, a.height)
 		return a, a.summary.Init()
+	case AppPhaseCommit:
+		a.commit = NewCommitModel(a.gen, a.files, a.quizScore, a.width, a.height)
+		return a, a.commit.Init()
 	}
 	return a, nil
 }

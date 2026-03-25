@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -41,8 +43,19 @@ func defaultRunTUI(files []git.File, gen *quiz.Generator, cfg config.Config) err
 	if err != nil {
 		return fmt.Errorf("tui: %w", err)
 	}
-	if finalApp, ok := m.(tui.App); ok && !finalApp.Passed() {
+	finalApp, ok := m.(tui.App)
+	if !ok {
+		return nil
+	}
+	if !finalApp.Passed() {
 		return fmt.Errorf("vibecheck: review failed")
+	}
+	if finalApp.CommitConfirmed() {
+		out, err := exec.Command("git", "commit", "-m", finalApp.CommitMessage()).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("git commit: %w\n%s", err, strings.TrimSpace(string(out)))
+		}
+		fmt.Print(strings.TrimSpace(string(out)))
 	}
 	return nil
 }
