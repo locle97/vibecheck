@@ -12,25 +12,16 @@ import (
 	"github.com/locle97/vibecheck/internal/git"
 )
 
-// QuestionKind indicates whether a question is global or tied to a specific hunk.
-type QuestionKind string
-
-const (
-	QuestionKindGeneral QuestionKind = "general"
-	QuestionKindHunk    QuestionKind = "hunk"
-)
-
 // Question is a single multiple-choice quiz question generated from the diff.
 type Question struct {
-	ID            int          `json:"-"`
-	IDLabel       string       `json:"-"`
-	Question      string       `json:"question"`
-	Options       []string     `json:"options"`
-	Answer        int          `json:"answer"`
-	Hint          string       `json:"hint,omitempty"`
-	Explanation   string       `json:"explanation,omitempty"`
-	Kind          QuestionKind `json:"-"`
-	TargetHunkIdx int          `json:"-"` // 1-based index in flattened diff hunk order
+	ID            int      `json:"-"`
+	IDLabel       string   `json:"-"`
+	Question      string   `json:"question"`
+	Options       []string `json:"options"`
+	Answer        int      `json:"answer"`
+	Hint          string   `json:"hint,omitempty"`
+	Explanation   string   `json:"explanation,omitempty"`
+	TargetHunkIdx int      `json:"-"` // 1-based index in flattened diff hunk order
 }
 
 func (q *Question) UnmarshalJSON(data []byte) error {
@@ -119,15 +110,14 @@ func buildPrompt() string {
 	sb.WriteString("You are reviewing a staged git diff before the developer commits.\n")
 	sb.WriteString("Generate simple, straightforward multiple-choice questions that verify the developer read and understood the changes.\n")
 	sb.WriteString("Questions should be factual and directly answerable from the diff — avoid trick questions, ambiguous wording, or testing obscure edge cases.\n")
-	sb.WriteString("Create 3-5 overall questions about the broader structure/workflow of the change.\n")
-	sb.WriteString("Also create exactly one question per diff hunk for hunk-level understanding.\n")
-	sb.WriteString("Order questions strictly by file flow: all overall questions first, then hunk-specific questions in the same file and hunk order shown in the diff.\n")
-	sb.WriteString("Use id format G1..Gn for overall questions and H1..Hm for hunk-specific questions where Hk maps to the k-th hunk in the rendered diff order.\n")
-	sb.WriteString("Each hunk-specific question should clearly anchor to that specific hunk (file path and hunk context).\n")
+	sb.WriteString("Create exactly one question per diff hunk.\n")
+	sb.WriteString("Order questions strictly by file and hunk order shown in the diff.\n")
+	sb.WriteString("Use id format H1..Hm where Hk maps to the k-th hunk in the rendered diff order.\n")
+	sb.WriteString("Each question should clearly anchor to its specific hunk (file path and hunk context).\n")
 	sb.WriteString("Each question must have exactly 4 options and one correct answer.\n")
 	sb.WriteString("For each question, include an \"explanation\" field: a brief, clear explanation of why the correct answer is right, shown to the developer when they answer incorrectly.\n\n")
 	sb.WriteString("Return ONLY a JSON array - no markdown fences, no prose - using this exact shape:\n")
-	sb.WriteString(`[{"id":"G1","question":"...","options":["choice A","choice B","choice C","choice D"],"answer":0,"hint":"optional","explanation":"why the correct answer is right"}]`)
+	sb.WriteString(`[{"id":"H1","question":"...","options":["choice A","choice B","choice C","choice D"],"answer":0,"hint":"optional","explanation":"why the correct answer is right"}]`)
 	sb.WriteString("\n\"answer\" is the 0-based index of the correct option.")
 	return sb.String()
 }
@@ -150,10 +140,6 @@ func renderDiff(files []git.File) string {
 }
 
 var jsonArrayRe = regexp.MustCompile(`(?s)\[.*\]`)
-var (
-	generalIDRe = regexp.MustCompile(`(?i)^g(?:eneral)?[-_ ]?(\d+)?$`)
-	hunkIDRe    = regexp.MustCompile(`(?i)^h(?:unk)?[-_ ]?(\d+)$`)
-)
 
 func parseQuestions(raw string) ([]Question, error) {
 	raw = strings.TrimSpace(raw)
@@ -185,70 +171,17 @@ func parseQuestions(raw string) ([]Question, error) {
 
 func annotateQuestions(questions []Question, files []git.File) {
 	totalHunks := countHunks(files)
-
-	for i := range questions {
-		label := strings.TrimSpace(questions[i].IDLabel)
-		if label == "" {
-			continue
-		}
-
-		if generalIDRe.MatchString(label) {
-			questions[i].Kind = QuestionKindGeneral
-			continue
-		}
-
-		matches := hunkIDRe.FindStringSubmatch(label)
-		if len(matches) != 2 {
-			continue
-		}
-
-		hunkIdx, err := strconv.Atoi(matches[1])
-		if err != nil || hunkIdx < 1 || hunkIdx > totalHunks {
-			continue
-		}
-
-		questions[i].Kind = QuestionKindHunk
-		questions[i].TargetHunkIdx = hunkIdx
-	}
-
 	if totalHunks == 0 {
-		for i := range questions {
-			if questions[i].Kind == "" {
-				questions[i].Kind = QuestionKindGeneral
-			}
-		}
 		return
 	}
 
-	hunkQuestions := make([]int, 0, len(questions))
-	for i := range questions {
-		if questions[i].Kind == QuestionKindHunk {
-			hunkQuestions = append(hunkQuestions, i)
-		}
+	limit := len(questions)
+	if limit > totalHunks {
+		limit = totalHunks
 	}
 
-	if len(hunkQuestions) == totalHunks {
-		for i := range questions {
-			if questions[i].Kind == "" {
-				questions[i].Kind = QuestionKindGeneral
-			}
-		}
-		return
-	}
-
-	generalCount := len(questions) - totalHunks
-	if generalCount < 0 {
-		generalCount = 0
-	}
-
-	for i := range questions {
-		if i < generalCount {
-			questions[i].Kind = QuestionKindGeneral
-			questions[i].TargetHunkIdx = 0
-			continue
-		}
-		questions[i].Kind = QuestionKindHunk
-		questions[i].TargetHunkIdx = i - generalCount + 1
+	for i := 0; i < limit; i++ {
+		questions[i].TargetHunkIdx = i + 1
 	}
 }
 

@@ -39,7 +39,7 @@ func flattenHunks(files []git.File) []hunkEntry {
 	return result
 }
 
-// fullDiff renders all hunks concatenated for general questions.
+// fullDiff renders all hunks concatenated as fallback context.
 func fullDiff(hunks []hunkEntry) string {
 	var sb strings.Builder
 	curFile := ""
@@ -115,7 +115,7 @@ func (m *QuizModel) syncDiffView() {
 	}
 	q := m.questions[m.current]
 	var raw string
-	if q.Kind == quiz.QuestionKindHunk && q.TargetHunkIdx > 0 && q.TargetHunkIdx <= len(m.hunks) {
+	if q.TargetHunkIdx > 0 && q.TargetHunkIdx <= len(m.hunks) {
 		h := m.hunks[q.TargetHunkIdx-1]
 		raw = fmt.Sprintf("=== %s ===\n%s", h.filePath, h.rawDiff)
 	} else {
