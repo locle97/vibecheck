@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/alecthomas/chroma/v2/quick"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // DiffView is a scrollable, syntax-highlighted diff panel.
@@ -37,6 +38,16 @@ func renderDiffLines(raw string) []string {
 func (d *DiffView) SetSize(width, height int) {
 	d.width = width
 	d.height = height
+	// clamp scroll so it stays valid for the new height
+	if d.height > 0 {
+		maxScroll := len(d.lines) - d.height
+		if maxScroll < 0 {
+			maxScroll = 0
+		}
+		if d.scrollPos > maxScroll {
+			d.scrollPos = maxScroll
+		}
+	}
 }
 
 // Render returns the visible slice of highlighted lines clipped to d.height.
@@ -52,7 +63,15 @@ func (d *DiffView) Render() string {
 	if end > len(d.lines) {
 		end = len(d.lines)
 	}
-	return strings.Join(d.lines[start:end], "\n")
+	visible := d.lines[start:end]
+	if d.width > 0 {
+		truncated := make([]string, len(visible))
+		for i, l := range visible {
+			truncated[i] = ansi.Truncate(l, d.width, "")
+		}
+		visible = truncated
+	}
+	return strings.Join(visible, "\n")
 }
 
 func (d *DiffView) ScrollDown() {

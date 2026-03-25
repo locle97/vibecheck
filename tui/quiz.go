@@ -260,6 +260,7 @@ func (m QuizModel) View() string {
 	}
 
 	// Left pane: diff.
+	m.diffView.SetSize(leftW, innerH)
 	leftPane := lipgloss.NewStyle().
 		Width(leftW).Height(innerH).
 		Border(lipgloss.RoundedBorder()).
