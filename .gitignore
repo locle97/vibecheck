@@ -7,7 +7,7 @@
 *.dll
 *.so
 *.dylib
-./vibecheck
+vibecheck
 
 # Test binary, built with `go test -c`
 *.test
