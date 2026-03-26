@@ -43,13 +43,13 @@ func TestGenerateQuestions_SendsPromptAndDiff(t *testing.T) {
 		t.Fatalf("unexpected questions: %+v", questions)
 	}
 
-	for _, want := range []string{"JSON", "exactly one question per diff hunk", "Order questions strictly by file and hunk order", "Use id format H1..Hm"} {
+	for _, want := range []string{"JSON", "exactly one question per diff hunk", "Order questions strictly by file and hunk order", "hunk_id"} {
 		if !strings.Contains(gotPrompt, want) {
 			t.Fatalf("prompt should include %q instructions, got: %q", want, gotPrompt)
 		}
 	}
 
-	for _, want := range []string{"main.go", "@@ -1,3 +1,4 @@", `fmt.Println`} {
+	for _, want := range []string{"main.go", "@@ -1,3 +1,4 @@", `fmt.Println`, "hunk_f0_h0"} {
 		if !strings.Contains(gotDiff, want) {
 			t.Fatalf("diff should contain %q, got: %q", want, gotDiff)
 		}
@@ -100,8 +100,8 @@ func TestParseQuestions_EscapedArray(t *testing.T) {
 func TestGenerateQuestions_AnnotatesTargetHunkFromID(t *testing.T) {
 	g := New(fakeAgent{complete: func(ctx context.Context, prompt, diff string) (string, error) {
 		return `[
-			{"id":"H1","question":"Hunk one","options":["A","B","C","D"],"answer":0},
-			{"id":"H2","question":"Hunk two","options":["A","B","C","D"],"answer":0}
+			{"id":"H1","hunk_id":"hunk_f0_h0","question":"Hunk one","options":["A","B","C","D"],"answer":0},
+			{"id":"H2","hunk_id":"hunk_f0_h1","question":"Hunk two","options":["A","B","C","D"],"answer":0}
 		]`, nil
 	}})
 
@@ -159,11 +159,14 @@ func TestGenerateQuestions_FallbackAnnotatesByOrder(t *testing.T) {
 	}
 }
 
-func TestGenerateQuestions_AnnotatesByOrderEvenWhenIDsAreOutOfOrder(t *testing.T) {
+func TestGenerateQuestions_AnnotatesByHunkIDWhenProvided(t *testing.T) {
+	// Agent returns questions with hunk_ids in reverse order:
+	// first question references hunk_f0_h1 (hunk 2), second references hunk_f0_h0 (hunk 1).
+	// Mapping must follow hunk_id, not question position.
 	g := New(fakeAgent{complete: func(ctx context.Context, prompt, diff string) (string, error) {
 		return `[
-			{"id":"H2","question":"First question","options":["A","B","C","D"],"answer":0},
-			{"id":"H1","question":"Second question","options":["A","B","C","D"],"answer":0}
+			{"id":"H2","hunk_id":"hunk_f0_h1","question":"Second hunk first","options":["A","B","C","D"],"answer":0},
+			{"id":"H1","hunk_id":"hunk_f0_h0","question":"First hunk second","options":["A","B","C","D"],"answer":0}
 		]`, nil
 	}})
 
@@ -181,11 +184,11 @@ func TestGenerateQuestions_AnnotatesByOrderEvenWhenIDsAreOutOfOrder(t *testing.T
 		t.Fatalf("want 2 questions, got %d", len(questions))
 	}
 
-	if questions[0].TargetHunkIdx != 1 {
-		t.Fatalf("question 0 should target hunk 1, got %+v", questions[0])
+	if questions[0].TargetHunkIdx != 2 {
+		t.Fatalf("question 0 (hunk_f0_h1) should target hunk 2, got %+v", questions[0])
 	}
 
-	if questions[1].TargetHunkIdx != 2 {
-		t.Fatalf("question 1 should target hunk 2, got %+v", questions[1])
+	if questions[1].TargetHunkIdx != 1 {
+		t.Fatalf("question 1 (hunk_f0_h0) should target hunk 1, got %+v", questions[1])
 	}
 }

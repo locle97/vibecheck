@@ -16,6 +16,7 @@ import (
 type Question struct {
 	ID            int      `json:"-"`
 	IDLabel       string   `json:"-"`
+	HunkID        string   `json:"-"` // hunk_id echoed back by the agent; used for precise hunk mapping
 	Question      string   `json:"question"`
 	Options       []string `json:"options"`
 	Answer        int      `json:"answer"`
@@ -27,6 +28,7 @@ type Question struct {
 func (q *Question) UnmarshalJSON(data []byte) error {
 	type wireQuestion struct {
 		ID          json.RawMessage `json:"id"`
+		HunkID      string          `json:"hunk_id,omitempty"`
 		Question    string          `json:"question"`
 		Options     []string        `json:"options"`
 		Answer      int             `json:"answer"`
@@ -39,6 +41,7 @@ func (q *Question) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
+	q.HunkID = wire.HunkID
 	q.Question = wire.Question
 	q.Options = wire.Options
 	q.Answer = wire.Answer
@@ -90,7 +93,8 @@ func New(a agent.Agent) *Generator {
 }
 
 func (g *Generator) GenerateQuestions(ctx context.Context, files []git.File) ([]Question, error) {
-	raw, err := g.agent.Complete(ctx, buildPrompt(), renderDiff(files))
+	diff, hunkMap := renderDiff(files)
+	raw, err := g.agent.Complete(ctx, buildPrompt(), diff)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +104,7 @@ func (g *Generator) GenerateQuestions(ctx context.Context, files []git.File) ([]
 		return nil, fmt.Errorf("quiz: parse questions: %w", err)
 	}
 
-	annotateQuestions(questions, files)
+	annotateQuestions(questions, files, hunkMap)
 
 	return questions, nil
 }
@@ -112,21 +116,29 @@ func buildPrompt() string {
 	sb.WriteString("Questions should be factual and directly answerable from the diff — avoid trick questions, ambiguous wording, or testing obscure edge cases.\n")
 	sb.WriteString("Create exactly one question per diff hunk.\n")
 	sb.WriteString("Order questions strictly by file and hunk order shown in the diff.\n")
-	sb.WriteString("Use id format H1..Hm where Hk maps to the k-th hunk in the rendered diff order.\n")
-	sb.WriteString("Each question should clearly anchor to its specific hunk (file path and hunk context).\n")
+	sb.WriteString("Use id format H1..Hm for question labels.\n")
+	sb.WriteString("Each hunk in the diff is preceded by a [hunk_id: <id>] tag. Each question must include a \"hunk_id\" field containing the exact value of that tag for the hunk the question is about.\n")
 	sb.WriteString("Each question must have exactly 4 options and one correct answer.\n")
 	sb.WriteString("For each question, include an \"explanation\" field: a brief, clear explanation of why the correct answer is right, shown to the developer when they answer incorrectly.\n\n")
 	sb.WriteString("Return ONLY a JSON array - no markdown fences, no prose - using this exact shape:\n")
-	sb.WriteString(`[{"id":"H1","question":"...","options":["choice A","choice B","choice C","choice D"],"answer":0,"hint":"optional","explanation":"why the correct answer is right"}]`)
+	sb.WriteString(`[{"id":"H1","hunk_id":"hunk_f0_h0","question":"...","options":["choice A","choice B","choice C","choice D"],"answer":0,"hint":"optional","explanation":"why the correct answer is right"}]`)
 	sb.WriteString("\n\"answer\" is the 0-based index of the correct option.")
 	return sb.String()
 }
 
-func renderDiff(files []git.File) string {
+// renderDiff renders files as a human-readable diff with [hunk_id: <id>] tags before each hunk.
+// It returns the rendered text and a map from hunk ID to 1-based flattened hunk index.
+func renderDiff(files []git.File) (string, map[string]int) {
 	var sb strings.Builder
-	for _, f := range files {
+	hunkMap := make(map[string]int)
+	hunkCount := 0
+	for fi, f := range files {
 		fmt.Fprintf(&sb, "=== %s ===\n", f.Path)
-		for _, h := range f.Hunks {
+		for hi, h := range f.Hunks {
+			hunkCount++
+			hunkID := fmt.Sprintf("hunk_f%d_h%d", fi, hi)
+			hunkMap[hunkID] = hunkCount
+			fmt.Fprintf(&sb, "[hunk_id: %s]\n", hunkID)
 			sb.WriteString(h.Header)
 			sb.WriteString("\n")
 			for _, l := range h.Lines {
@@ -136,7 +148,7 @@ func renderDiff(files []git.File) string {
 		}
 		sb.WriteString("\n")
 	}
-	return sb.String()
+	return sb.String(), hunkMap
 }
 
 var jsonArrayRe = regexp.MustCompile(`(?s)\[.*\]`)
@@ -169,7 +181,7 @@ func parseQuestions(raw string) ([]Question, error) {
 	return questions, nil
 }
 
-func annotateQuestions(questions []Question, files []git.File) {
+func annotateQuestions(questions []Question, files []git.File, hunkMap map[string]int) {
 	totalHunks := countHunks(files)
 	if totalHunks == 0 {
 		return
@@ -181,7 +193,12 @@ func annotateQuestions(questions []Question, files []git.File) {
 	}
 
 	for i := 0; i < limit; i++ {
-		questions[i].TargetHunkIdx = i + 1
+		if idx, ok := hunkMap[questions[i].HunkID]; ok {
+			questions[i].TargetHunkIdx = idx
+		} else {
+			// fallback: positional assignment when agent omits hunk_id
+			questions[i].TargetHunkIdx = i + 1
+		}
 	}
 }
 

@@ -10,7 +10,8 @@ import (
 // GenerateCommitMessage calls the agent to produce a conventional-commits
 // formatted commit message for the staged diff.
 func (g *Generator) GenerateCommitMessage(ctx context.Context, files []git.File) (string, error) {
-	raw, err := g.agent.Complete(ctx, buildCommitPrompt(), renderDiff(files))
+	diff, _ := renderDiff(files)
+	raw, err := g.agent.Complete(ctx, buildCommitPrompt(), diff)
 	if err != nil {
 		return "", err
 	}
