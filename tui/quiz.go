@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/locle97/vibecheck/internal/git"
 	"github.com/locle97/vibecheck/internal/quiz"
@@ -11,6 +12,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+type flashDoneMsg struct{}
 
 // hunkEntry is a flattened view of a single hunk across all files.
 type hunkEntry struct {
@@ -75,6 +78,7 @@ type QuizModel struct {
 	score      float64
 	passThresh float64
 	loading    bool
+	flashing   bool
 	showResult bool
 
 	gen        *quiz.Generator
@@ -161,8 +165,13 @@ func (m QuizModel) Update(msg tea.Msg) (QuizModel, tea.Cmd) {
 		m.correct = 0
 		m.syncDiffView()
 
+	case flashDoneMsg:
+		m.flashing = false
+		m.showResult = true
+		return m, nil
+
 	case tea.KeyMsg:
-		if m.loading {
+		if m.loading || m.flashing {
 			return m, nil
 		}
 
@@ -204,11 +213,13 @@ func (m QuizModel) Update(msg tea.Msg) (QuizModel, tea.Cmd) {
 			m.diffView.ScrollDown()
 		case "enter":
 			m.lastSelected = m.selected
-			correct := m.selected == q.Answer
-			m.showResult = true
-			if correct {
+			if m.selected == q.Answer {
 				m.correct++
 			}
+			m.flashing = true
+			return m, tea.Tick(180*time.Millisecond, func(time.Time) tea.Msg {
+				return flashDoneMsg{}
+			})
 		}
 
 	case tea.WindowSizeMsg:
@@ -235,8 +246,17 @@ func (m QuizModel) View() string {
 	if qNum > total {
 		qNum = total
 	}
-	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214")).
-		Render(fmt.Sprintf(" vibecheck • Quiz • Q %d/%d   Score: %d/%d ", qNum, total, m.correct, m.current))
+
+	const barWidth = 18
+	filledCount := 0
+	if total > 0 {
+		filledCount = (m.current * barWidth) / total
+	}
+	progressBar := lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render(strings.Repeat("█", filledCount)) +
+		lipgloss.NewStyle().Foreground(lipgloss.Color("238")).Render(strings.Repeat("░", barWidth-filledCount))
+	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214")).Render(" vibecheck ") +
+		" " + progressBar + " " +
+		lipgloss.NewStyle().Foreground(lipgloss.Color("250")).Render(fmt.Sprintf("Q %d/%d  ✔ %d ", qNum, total, m.correct))
 
 	if m.err != "" {
 		errLine := lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("  Error: " + m.err)
@@ -275,7 +295,30 @@ func (m QuizModel) View() string {
 
 	letters := []string{"A", "B", "C", "D", "E", "F"}
 	var body string
-	if m.showResult {
+	if m.flashing {
+		// Brief flash before result: selected option highlighted green/red, rest dimmed.
+		isCorrect := m.lastSelected == q.Answer
+		dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+		var opts []string
+		for i, opt := range q.Options {
+			letter := "?"
+			if i < len(letters) {
+				letter = letters[i]
+			}
+			if i == m.lastSelected {
+				var flashStyle lipgloss.Style
+				if isCorrect {
+					flashStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Background(lipgloss.Color("22")).Bold(true)
+				} else {
+					flashStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Background(lipgloss.Color("52")).Bold(true)
+				}
+				opts = append(opts, flashStyle.Render("❯ "+letter+". "+opt))
+			} else {
+				opts = append(opts, dimStyle.Render("  "+letter+". "+opt))
+			}
+		}
+		body = strings.Join(opts, "\n")
+	} else if m.showResult {
 		correctStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Bold(true)
 		wrongStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true)
 		dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
