@@ -40,16 +40,26 @@ func flattenHunks(files []git.File) []hunkEntry {
 }
 
 // fullDiff renders all hunks concatenated as fallback context.
+// File headers include the hunk count so the renderer shows "file (N changes)".
 func fullDiff(hunks []hunkEntry) string {
 	var sb strings.Builder
-	curFile := ""
-	for _, h := range hunks {
-		if h.filePath != curFile {
-			curFile = h.filePath
-			fmt.Fprintf(&sb, "=== %s ===\n", curFile)
+	i := 0
+	for i < len(hunks) {
+		file := hunks[i].filePath
+		j := i
+		for j < len(hunks) && hunks[j].filePath == file {
+			j++
 		}
-		sb.WriteString(h.rawDiff)
-		sb.WriteString("\n")
+		count := j - i
+		word := "change"
+		if count != 1 {
+			word = "changes"
+		}
+		fmt.Fprintf(&sb, "=== %s (%d %s) ===\n", file, count, word)
+		for ; i < j; i++ {
+			sb.WriteString(hunks[i].rawDiff)
+			sb.WriteString("\n")
+		}
 	}
 	return sb.String()
 }
@@ -117,7 +127,7 @@ func (m *QuizModel) syncDiffView() {
 	var raw string
 	if q.TargetHunkIdx > 0 && q.TargetHunkIdx <= len(m.hunks) {
 		h := m.hunks[q.TargetHunkIdx-1]
-		raw = fmt.Sprintf("=== %s ===\n%s", h.filePath, h.rawDiff)
+		raw = fmt.Sprintf("=== %s (1 change) ===\n%s", h.filePath, h.rawDiff)
 	} else {
 		raw = fullDiff(m.hunks)
 	}

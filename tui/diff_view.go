@@ -1,10 +1,9 @@
 package tui
 
 import (
-	"bytes"
 	"strings"
 
-	"github.com/alecthomas/chroma/v2/quick"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -27,12 +26,35 @@ func NewDiffView(raw string, width, height int) DiffView {
 	return d
 }
 
+// renderDiffLines converts raw diff text to human-optimized styled lines.
+// Metadata (file headers, hunk positions) is dimmed; semantic changes are highlighted.
 func renderDiffLines(raw string) []string {
-	var buf bytes.Buffer
-	if err := quick.Highlight(&buf, raw, "diff", "terminal256", "monokai"); err != nil {
-		return strings.Split(raw, "\n")
+	fileStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Bold(true)
+	hunkStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("237"))
+	addStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("82"))
+	delStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+	ctxStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
+
+	lines := strings.Split(raw, "\n")
+	out := make([]string, len(lines))
+	for i, line := range lines {
+		switch {
+		case strings.HasPrefix(line, "=== ") && strings.HasSuffix(line, " ==="):
+			// File header — strip markers, show name dimmed
+			name := line[4 : len(line)-4]
+			out[i] = fileStyle.Render("  " + name)
+		case strings.HasPrefix(line, "@@"):
+			// Hunk position — metadata, render very dim
+			out[i] = hunkStyle.Render(line)
+		case len(line) > 0 && line[0] == '+':
+			out[i] = addStyle.Render(line)
+		case len(line) > 0 && line[0] == '-':
+			out[i] = delStyle.Render(line)
+		default:
+			out[i] = ctxStyle.Render(line)
+		}
 	}
-	return strings.Split(buf.String(), "\n")
+	return out
 }
 
 func (d *DiffView) SetSize(width, height int) {
