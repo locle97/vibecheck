@@ -9,11 +9,12 @@ import (
 
 // DiffView is a scrollable, syntax-highlighted diff panel.
 type DiffView struct {
-	raw       string
-	lines     []string // rendered (highlighted) lines for scrolling
-	scrollPos int
-	height    int
-	width     int
+	raw          string
+	lines        []string // rendered (highlighted) lines before wrapping
+	displayLines []string // lines after wrapping to current width
+	scrollPos    int
+	height       int
+	width        int
 }
 
 func NewDiffView(raw string, width, height int) DiffView {
@@ -23,6 +24,7 @@ func NewDiffView(raw string, width, height int) DiffView {
 		height: height,
 	}
 	d.lines = renderDiffLines(raw)
+	d.recomputeDisplayLines()
 	return d
 }
 
@@ -60,9 +62,10 @@ func renderDiffLines(raw string) []string {
 func (d *DiffView) SetSize(width, height int) {
 	d.width = width
 	d.height = height
+	d.recomputeDisplayLines()
 	// clamp scroll so it stays valid for the new height
 	if d.height > 0 {
-		maxScroll := len(d.lines) - d.height
+		maxScroll := len(d.displayLines) - d.height
 		if maxScroll < 0 {
 			maxScroll = 0
 		}
@@ -72,32 +75,38 @@ func (d *DiffView) SetSize(width, height int) {
 	}
 }
 
+func (d *DiffView) recomputeDisplayLines() {
+	if d.width <= 0 {
+		d.displayLines = d.lines
+		return
+	}
+	result := make([]string, 0, len(d.lines))
+	for _, line := range d.lines {
+		wrapped := ansi.Hardwrap(line, d.width, true)
+		parts := strings.Split(wrapped, "\n")
+		result = append(result, parts...)
+	}
+	d.displayLines = result
+}
+
 // Render returns the visible slice of highlighted lines clipped to d.height.
 func (d *DiffView) Render() string {
-	if len(d.lines) == 0 || d.height <= 0 {
+	if len(d.displayLines) == 0 || d.height <= 0 {
 		return d.raw
 	}
 	start := d.scrollPos
-	if start >= len(d.lines) {
-		start = len(d.lines) - 1
+	if start >= len(d.displayLines) {
+		start = len(d.displayLines) - 1
 	}
 	end := start + d.height
-	if end > len(d.lines) {
-		end = len(d.lines)
+	if end > len(d.displayLines) {
+		end = len(d.displayLines)
 	}
-	visible := d.lines[start:end]
-	if d.width > 0 {
-		truncated := make([]string, len(visible))
-		for i, l := range visible {
-			truncated[i] = ansi.Truncate(l, d.width, "")
-		}
-		visible = truncated
-	}
-	return strings.Join(visible, "\n")
+	return strings.Join(d.displayLines[start:end], "\n")
 }
 
 func (d *DiffView) ScrollDown() {
-	maxScroll := len(d.lines) - d.height
+	maxScroll := len(d.displayLines) - d.height
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
