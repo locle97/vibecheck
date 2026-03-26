@@ -15,6 +15,8 @@ import (
 
 type flashDoneMsg struct{}
 
+const diffPanePercent = 65
+
 // hunkEntry is a flattened view of a single hunk across all files.
 type hunkEntry struct {
 	filePath string
@@ -67,6 +69,31 @@ func fullDiff(hunks []hunkEntry) string {
 	return sb.String()
 }
 
+func splitPaneWidths(totalWidth int) (int, int) {
+	const minPaneWidth = 10
+
+	usable := totalWidth - 6
+	if usable < minPaneWidth*2 {
+		usable = minPaneWidth * 2
+	}
+
+	left := (usable * diffPanePercent) / 100
+	if left < minPaneWidth {
+		left = minPaneWidth
+	}
+
+	right := usable - left
+	if right < minPaneWidth {
+		right = minPaneWidth
+		left = usable - right
+		if left < minPaneWidth {
+			left = minPaneWidth
+		}
+	}
+
+	return left, right
+}
+
 // QuizModel is the split-pane quiz view.
 // Left pane shows the relevant diff; right pane shows the MCQ question and options.
 type QuizModel struct {
@@ -75,19 +102,19 @@ type QuizModel struct {
 	selected     int
 	lastSelected int
 	correct      int
-	score      float64
-	passThresh float64
-	loading    bool
-	flashing   bool
-	showResult bool
+	score        float64
+	passThresh   float64
+	loading      bool
+	flashing     bool
+	showResult   bool
 
-	gen        *quiz.Generator
-	files      []git.File
-	hunks      []hunkEntry
-	diffView   DiffView
-	width      int
-	height     int
-	err        string
+	gen      *quiz.Generator
+	files    []git.File
+	hunks    []hunkEntry
+	diffView DiffView
+	width    int
+	height   int
+	err      string
 }
 
 type quizQuestionsMsg struct {
@@ -136,10 +163,7 @@ func (m *QuizModel) syncDiffView() {
 	} else {
 		raw = fullDiff(m.hunks)
 	}
-	leftW := m.width/2 - 3
-	if leftW < 10 {
-		leftW = 10
-	}
+	leftW, _ := splitPaneWidths(m.width)
 	innerH := m.height - 6
 	if innerH < 3 {
 		innerH = 3
@@ -267,14 +291,7 @@ func (m QuizModel) View() string {
 		return lipgloss.JoinVertical(lipgloss.Left, title)
 	}
 
-	leftW := m.width/2 - 3
-	if leftW < 10 {
-		leftW = 10
-	}
-	rightW := m.width - leftW - 6
-	if rightW < 10 {
-		rightW = 10
-	}
+	leftW, rightW := splitPaneWidths(m.width)
 	innerH := m.height - 6
 	if innerH < 3 {
 		innerH = 3
