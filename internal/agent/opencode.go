@@ -66,25 +66,31 @@ func extractNDJSONContent(raw string) string {
 		var event struct {
 			Content string `json:"content"`
 			Text    string `json:"text"`
+			Part    struct {
+				Content string `json:"content"`
+				Text    string `json:"text"`
+			} `json:"part"`
 		}
 		if json.Unmarshal([]byte(line), &event) != nil {
 			continue
 		}
 
-		if content := strings.TrimSpace(event.Content); content != "" {
-			if strings.Contains(content, "[") {
-				return content
-			}
-			if fallback == "" {
-				fallback = content
-			}
+		candidates := []string{
+			strings.TrimSpace(event.Content),
+			strings.TrimSpace(event.Text),
+			strings.TrimSpace(event.Part.Content),
+			strings.TrimSpace(event.Part.Text),
 		}
-		if text := strings.TrimSpace(event.Text); text != "" {
-			if strings.Contains(text, "[") {
-				return text
+
+		for _, candidate := range candidates {
+			if candidate == "" {
+				continue
+			}
+			if strings.Contains(candidate, "[") {
+				return candidate
 			}
 			if fallback == "" {
-				fallback = text
+				fallback = candidate
 			}
 		}
 	}

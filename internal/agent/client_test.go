@@ -69,3 +69,27 @@ func TestExtractNDJSONContent(t *testing.T) {
 		t.Fatalf("unexpected content: %q", got)
 	}
 }
+
+func TestExtractNDJSONContent_NestedPartText(t *testing.T) {
+	inner := `[{"id":1}]`
+	raw := `{"type":"step_start","part":{"type":"step-start"}}` + "\n" +
+		`{"type":"text","part":{"type":"text","text":"` + strings.ReplaceAll(inner, `"`, `\"`) + `"}}` + "\n" +
+		`{"type":"step_finish","part":{"type":"step-finish"}}`
+
+	got := extractNDJSONContent(raw)
+	if got != inner {
+		t.Fatalf("unexpected content: %q", got)
+	}
+}
+
+func TestExtractNDJSONContent_NestedPartTextFallback(t *testing.T) {
+	want := "fix(tui): stabilize split panes"
+	raw := `{"type":"step_start","part":{"type":"step-start"}}` + "\n" +
+		`{"type":"text","part":{"type":"text","text":"` + want + `"}}` + "\n" +
+		`{"type":"step_finish","part":{"type":"step-finish"}}`
+
+	got := extractNDJSONContent(raw)
+	if got != want {
+		t.Fatalf("unexpected content: %q", got)
+	}
+}
