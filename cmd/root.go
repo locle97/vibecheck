@@ -107,9 +107,9 @@ func defaultConfigPath() string {
 		return "config.toml"
 	}
 
-	configDir, err := os.UserConfigDir()
+	home, err := os.UserHomeDir()
 	if err != nil {
 		return "config.toml"
 	}
-	return filepath.Join(configDir, "vibecheck", "config.toml")
+	return filepath.Join(home, ".config", "vibecheck", "config.toml")
 }
