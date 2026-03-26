@@ -67,15 +67,16 @@ func fullDiff(hunks []hunkEntry) string {
 // QuizModel is the split-pane quiz view.
 // Left pane shows the relevant diff; right pane shows the MCQ question and options.
 type QuizModel struct {
-	questions  []quiz.Question
-	current    int
-	selected   int
-	correct    int
+	questions    []quiz.Question
+	current      int
+	selected     int
+	lastSelected int
+	correct      int
 	score      float64
 	passThresh float64
 	loading    bool
 	showResult bool
-	feedback   string
+
 	gen        *quiz.Generator
 	files      []git.File
 	hunks      []hunkEntry
@@ -168,7 +169,6 @@ func (m QuizModel) Update(msg tea.Msg) (QuizModel, tea.Cmd) {
 		if m.showResult {
 			if msg.String() == "enter" || msg.String() == " " {
 				m.showResult = false
-				m.feedback = ""
 				m.current++
 				m.selected = 0
 				if m.current >= len(m.questions) {
@@ -203,20 +203,11 @@ func (m QuizModel) Update(msg tea.Msg) (QuizModel, tea.Cmd) {
 		case "ctrl+d":
 			m.diffView.ScrollDown()
 		case "enter":
+			m.lastSelected = m.selected
 			correct := m.selected == q.Answer
 			m.showResult = true
 			if correct {
-				m.feedback = "Correct!"
 				m.correct++
-			} else {
-				answer := "(invalid)"
-				if q.Answer >= 0 && q.Answer < len(q.Options) {
-					answer = q.Options[q.Answer]
-				}
-				m.feedback = fmt.Sprintf("Incorrect. The answer was: %s", answer)
-				if q.Explanation != "" {
-					m.feedback += "\n" + q.Explanation
-				}
 			}
 		}
 
@@ -282,19 +273,39 @@ func (m QuizModel) View() string {
 	q := m.questions[m.current]
 	qText := lipgloss.NewStyle().Bold(true).Render("Q: " + q.Question)
 
+	letters := []string{"A", "B", "C", "D", "E", "F"}
 	var body string
 	if m.showResult {
-		var resultStyle lipgloss.Style
-		if strings.HasPrefix(m.feedback, "Correct") {
-			resultStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("82"))
-		} else {
-			resultStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+		correctStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Bold(true)
+		wrongStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true)
+		dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+		var opts []string
+		for i, opt := range q.Options {
+			letter := "?"
+			if i < len(letters) {
+				letter = letters[i]
+			}
+			switch {
+			case i == q.Answer:
+				opts = append(opts, correctStyle.Render("✔  "+letter+". "+opt))
+			case i == m.lastSelected:
+				opts = append(opts, wrongStyle.Render("✖  "+letter+". "+opt))
+			default:
+				opts = append(opts, dimStyle.Render("   "+letter+". "+opt))
+			}
 		}
-		body = resultStyle.Render(m.feedback) + "\n\n" +
-			lipgloss.NewStyle().Faint(true).Render("Press enter to continue…")
+		extra := ""
+		if q.Explanation != "" && m.lastSelected != q.Answer {
+			extra = "\n\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render(q.Explanation)
+		}
+		body = strings.Join(opts, "\n") + extra + "\n\n" +
+			lipgloss.NewStyle().Faint(true).Render("  ↵ continue")
 	} else {
-		selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Bold(true)
-		letters := []string{"A", "B", "C", "D", "E", "F"}
+		hoverStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("214")).
+			Background(lipgloss.Color("235")).
+			Bold(true)
+		normalStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 		var opts []string
 		for i, opt := range q.Options {
 			letter := "?"
@@ -302,9 +313,9 @@ func (m QuizModel) View() string {
 				letter = letters[i]
 			}
 			if i == m.selected {
-				opts = append(opts, "▶ "+selectedStyle.Render(letter+". "+opt))
+				opts = append(opts, hoverStyle.Render("❯ "+letter+". "+opt))
 			} else {
-				opts = append(opts, "  "+letter+". "+opt)
+				opts = append(opts, normalStyle.Render("  "+letter+". "+opt))
 			}
 		}
 		body = strings.Join(opts, "\n")
