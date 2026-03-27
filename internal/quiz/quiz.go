@@ -2,6 +2,7 @@ package quiz
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -11,6 +12,9 @@ import (
 	"github.com/locle97/vibecheck/internal/agent"
 	"github.com/locle97/vibecheck/internal/git"
 )
+
+//go:embed prompt.md
+var promptTemplate string
 
 // Question is a single multiple-choice quiz question generated from the diff.
 type Question struct {
@@ -110,20 +114,7 @@ func (g *Generator) GenerateQuestions(ctx context.Context, files []git.File) ([]
 }
 
 func buildPrompt() string {
-	var sb strings.Builder
-	sb.WriteString("You are reviewing a staged git diff before the developer commits.\n")
-	sb.WriteString("Generate simple, straightforward multiple-choice questions that verify the developer read and understood the changes.\n")
-	sb.WriteString("Questions should be factual and directly answerable from the diff — avoid trick questions, ambiguous wording, or testing obscure edge cases.\n")
-	sb.WriteString("Create exactly one question per diff hunk.\n")
-	sb.WriteString("Order questions strictly by file and hunk order shown in the diff.\n")
-	sb.WriteString("Use id format H1..Hm for question labels.\n")
-	sb.WriteString("Each hunk in the diff is preceded by a [hunk_id: <id>] tag. Each question must include a \"hunk_id\" field containing the exact value of that tag for the hunk the question is about.\n")
-	sb.WriteString("Each question must have exactly 4 options and one correct answer.\n")
-	sb.WriteString("For each question, include an \"explanation\" field: a brief, clear explanation of why the correct answer is right, shown to the developer when they answer incorrectly.\n\n")
-	sb.WriteString("Return ONLY a JSON array - no markdown fences, no prose - using this exact shape:\n")
-	sb.WriteString(`[{"id":"H1","hunk_id":"hunk_f0_h0","question":"...","options":["choice A","choice B","choice C","choice D"],"answer":0,"hint":"optional","explanation":"why the correct answer is right"}]`)
-	sb.WriteString("\n\"answer\" is the 0-based index of the correct option.")
-	return sb.String()
+	return strings.TrimSpace(promptTemplate)
 }
 
 // renderDiff renders files as a human-readable diff with [hunk_id: <id>] tags before each hunk.
