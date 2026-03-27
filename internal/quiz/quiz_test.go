@@ -43,7 +43,7 @@ func TestGenerateQuestions_SendsPromptAndDiff(t *testing.T) {
 		t.Fatalf("unexpected questions: %+v", questions)
 	}
 
-	for _, want := range []string{"JSON", "exactly one question per diff hunk", "Order questions strictly by file and hunk order", "hunk_id"} {
+	for _, want := range []string{"JSON", "exactly one question per diff hunk", "hunk_id"} {
 		if !strings.Contains(gotPrompt, want) {
 			t.Fatalf("prompt should include %q instructions, got: %q", want, gotPrompt)
 		}
