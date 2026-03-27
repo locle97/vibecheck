@@ -33,7 +33,7 @@ func (m SummaryModel) Update(msg tea.Msg) (SummaryModel, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "enter", " ", "q":
-			return m, tea.Quit
+			return m, func() tea.Msg { return BackToStageMsg{} }
 		}
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -73,7 +73,7 @@ func (m SummaryModel) View() string {
 		"",
 		resultLine,
 		"",
-		lipgloss.NewStyle().Faint(true).Render("Press enter or q to exit."),
+		lipgloss.NewStyle().Faint(true).Render("Press enter or q to go back to staging."),
 	}
 
 	cardW := m.width - 6

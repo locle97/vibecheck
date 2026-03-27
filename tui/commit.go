@@ -79,7 +79,7 @@ func (m CommitModel) Update(msg tea.Msg) (CommitModel, tea.Cmd) {
 				}
 			}
 		case "esc", "q":
-			return m, tea.Quit
+			return m, func() tea.Msg { return BackToStageMsg{} }
 		}
 
 	case tea.WindowSizeMsg:
@@ -117,7 +117,7 @@ func (m CommitModel) View() string {
 			"",
 			errStyle.Render(m.errMsg),
 			"",
-			lipgloss.NewStyle().Faint(true).Render("Press q to exit."),
+			lipgloss.NewStyle().Faint(true).Render("Press q to go back to staging."),
 		)
 		return lipgloss.JoinVertical(lipgloss.Left, title, "", cardBorder.BorderForeground(lipgloss.Color("196")).Render(body))
 
@@ -137,7 +137,7 @@ func (m CommitModel) View() string {
 			"",
 			lipgloss.JoinVertical(lipgloss.Left, styledLines...),
 			"",
-			lipgloss.NewStyle().Faint(true).Render("Press enter to commit, esc/q to cancel."),
+			lipgloss.NewStyle().Faint(true).Render("Press enter to commit, esc/q to go back to staging."),
 		)
 		return lipgloss.JoinVertical(lipgloss.Left, title, "", cardBorder.Render(body))
 	}

@@ -157,6 +157,13 @@ func (m StageModel) Update(msg tea.Msg) (StageModel, tea.Cmd) {
 			}
 			return m.handleHunkToggle()
 
+		case "r":
+			m.loading = true
+			return m, m.Init()
+
+		case "q":
+			return m, tea.Quit
+
 		case "enter":
 			if len(m.staged) > 0 {
 				files := make([]git.File, len(m.staged))
@@ -241,12 +248,12 @@ func (m StageModel) View() string {
 	// --- Footer ---
 	var footerParts []string
 	if m.focus == stageFocusLeft {
-		footerParts = append(footerParts, "↑↓/jk: navigate  space: stage/unstage  tab/l: diff panel")
+		footerParts = append(footerParts, "↑↓/jk: navigate  space: stage/unstage  tab/l: diff panel  r: refresh  q: quit")
 		if len(m.staged) > 0 {
 			footerParts = append(footerParts, "enter: start quiz")
 		}
 	} else {
-		footerParts = append(footerParts, "↑↓/jk: prev/next hunk  space: stage/unstage hunk  tab/h: file list")
+		footerParts = append(footerParts, "↑↓/jk: prev/next hunk  space: stage/unstage hunk  tab/h: file list  r: refresh  q: quit")
 		if len(m.staged) > 0 {
 			footerParts = append(footerParts, "enter: start quiz")
 		}

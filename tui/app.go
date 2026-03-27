@@ -89,6 +89,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.commitConfirmed = true
 		a.commitMessage = msg.Message
 		return a, tea.Quit
+
+	case BackToStageMsg:
+		return a.startPhase(AppPhaseStage)
 	}
 
 	return a.routeToActive(msg)

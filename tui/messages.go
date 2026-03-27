@@ -29,3 +29,6 @@ type CommitConfirmedMsg struct {
 type StageDoneMsg struct {
 	Files []git.File
 }
+
+// BackToStageMsg is emitted by Summary or Commit screens to navigate back to the Stage phase.
+type BackToStageMsg struct{}
