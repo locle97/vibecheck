@@ -20,7 +20,7 @@ const (
 	stageFocusRight                   // diff/hunk panel
 )
 
-// stageFileEntry represents one entry in either the unstaged or staged list.
+// stageFileEntry represents one file entry in the unified list.
 type stageFileEntry struct {
 	path   string
 	file   git.File
@@ -36,10 +36,9 @@ type stageDiffsMsg struct {
 
 // StageModel is the split-pane staging view shown before the quiz.
 type StageModel struct {
-	unstaged   []stageFileEntry
-	staged     []stageFileEntry
+	entries    []stageFileEntry
 	focus      stageFocus
-	listCursor int // combined index: 0..len(unstaged)-1=unstaged, len(unstaged)..=staged
+	listCursor int
 	diffView   DiffView
 	width      int
 	height     int
@@ -86,17 +85,20 @@ func (m StageModel) Update(msg tea.Msg) (StageModel, tea.Cmd) {
 			m.err = msg.err.Error()
 			return m, nil
 		}
-		m.unstaged = make([]stageFileEntry, len(msg.unstaged))
-		for i, f := range msg.unstaged {
-			m.unstaged[i] = stageFileEntry{path: f.Path, file: f, staged: false}
+		m.entries = make([]stageFileEntry, 0, len(msg.unstaged)+len(msg.staged))
+		for _, f := range msg.unstaged {
+			m.entries = append(m.entries, stageFileEntry{path: f.Path, file: f, staged: false})
 		}
-		m.staged = make([]stageFileEntry, len(msg.staged))
-		for i, f := range msg.staged {
-			m.staged[i] = stageFileEntry{path: f.Path, file: f, staged: true}
+		for _, f := range msg.staged {
+			m.entries = append(m.entries, stageFileEntry{path: f.Path, file: f, staged: true})
 		}
 		// Sort alphabetically so tree DFS order matches cursor positions.
-		sort.Slice(m.unstaged, func(i, j int) bool { return m.unstaged[i].path < m.unstaged[j].path })
-		sort.Slice(m.staged, func(i, j int) bool { return m.staged[i].path < m.staged[j].path })
+		sort.Slice(m.entries, func(i, j int) bool {
+			if m.entries[i].path == m.entries[j].path {
+				return !m.entries[i].staged && m.entries[j].staged
+			}
+			return m.entries[i].path < m.entries[j].path
+		})
 		// Clamp cursor to valid range.
 		total := m.totalEntries()
 		if total > 0 && m.listCursor >= total {
@@ -165,10 +167,11 @@ func (m StageModel) Update(msg tea.Msg) (StageModel, tea.Cmd) {
 			return m, tea.Quit
 
 		case "enter":
-			if len(m.staged) > 0 {
-				files := make([]git.File, len(m.staged))
-				for i, e := range m.staged {
-					files[i] = e.file
+			stagedFiles := m.stagedFiles()
+			if len(stagedFiles) > 0 {
+				files := make([]git.File, len(stagedFiles))
+				for i, f := range stagedFiles {
+					files[i] = f.file
 				}
 				return m, func() tea.Msg { return StageDoneMsg{Files: files} }
 			}
@@ -202,24 +205,10 @@ func (m StageModel) View() string {
 
 	var leftLines []string
 
-	// Unstaged section
-	leftLines = append(leftLines,
-		lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true).Render("  Unstaged"))
-	if len(m.unstaged) == 0 {
+	if len(m.entries) == 0 {
 		leftLines = append(leftLines, lipgloss.NewStyle().Faint(true).Render("  (none)"))
 	} else {
-		leftLines = append(leftLines, renderTreeSection(m.unstaged, m.listCursor, m.focus == stageFocusLeft)...)
-	}
-
-	// Staged section
-	leftLines = append(leftLines, "")
-	leftLines = append(leftLines,
-		lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Bold(true).Render("  Staged"))
-	if len(m.staged) == 0 {
-		leftLines = append(leftLines, lipgloss.NewStyle().Faint(true).Render("  (none)"))
-	} else {
-		stagedCursor := m.listCursor - len(m.unstaged)
-		leftLines = append(leftLines, renderTreeSection(m.staged, stagedCursor, m.focus == stageFocusLeft)...)
+		leftLines = append(leftLines, renderTreeSection(m.entries, m.listCursor, m.focus == stageFocusLeft)...)
 	}
 
 	leftContent := strings.Join(leftLines, "\n")
@@ -249,12 +238,12 @@ func (m StageModel) View() string {
 	var footerParts []string
 	if m.focus == stageFocusLeft {
 		footerParts = append(footerParts, "↑↓/jk: navigate  space: stage/unstage  tab/l: diff panel  r: refresh  q: quit")
-		if len(m.staged) > 0 {
+		if len(m.stagedFiles()) > 0 {
 			footerParts = append(footerParts, "enter: start quiz")
 		}
 	} else {
 		footerParts = append(footerParts, "↑↓/jk: prev/next hunk  space: stage/unstage hunk  tab/h: file list  r: refresh  q: quit")
-		if len(m.staged) > 0 {
+		if len(m.stagedFiles()) > 0 {
 			footerParts = append(footerParts, "enter: start quiz")
 		}
 	}
@@ -277,7 +266,7 @@ func stagePaneWidths(totalWidth int) (int, int) {
 
 // totalEntries returns the total number of navigable file entries.
 func (m *StageModel) totalEntries() int {
-	return len(m.unstaged) + len(m.staged)
+	return len(m.entries)
 }
 
 // selectedEntry returns the stageFileEntry at listCursor, or nil if empty.
@@ -285,14 +274,20 @@ func (m *StageModel) selectedEntry() *stageFileEntry {
 	if m.totalEntries() == 0 {
 		return nil
 	}
-	if m.listCursor < len(m.unstaged) {
-		return &m.unstaged[m.listCursor]
-	}
-	idx := m.listCursor - len(m.unstaged)
-	if idx < len(m.staged) {
-		return &m.staged[idx]
+	if m.listCursor >= 0 && m.listCursor < len(m.entries) {
+		return &m.entries[m.listCursor]
 	}
 	return nil
+}
+
+func (m *StageModel) stagedFiles() []stageFileEntry {
+	staged := make([]stageFileEntry, 0, len(m.entries))
+	for _, e := range m.entries {
+		if e.staged {
+			staged = append(staged, e)
+		}
+	}
+	return staged
 }
 
 // syncDiffView rebuilds the DiffView for the currently selected file.
@@ -383,12 +378,10 @@ type stageDirNode struct {
 }
 
 // renderTreeSection renders entries as a directory tree.
-// sectionCursor is the cursor position relative to this section's entries slice.
-// A negative sectionCursor means the cursor is in the other section.
-func renderTreeSection(entries []stageFileEntry, sectionCursor int, focusLeft bool) []string {
+func renderTreeSection(entries []stageFileEntry, cursor int, focusLeft bool) []string {
 	root := buildStageTree(entries)
 	var lines []string
-	renderDirNode(root, entries, sectionCursor, focusLeft, 0, &lines)
+	renderDirNode(root, entries, cursor, focusLeft, 0, &lines)
 	return lines
 }
 
@@ -450,7 +443,7 @@ func renderDirNode(node *stageDirNode, entries []stageFileEntry, cursor int, foc
 		} else {
 			entry := entries[c.fileIdx]
 			focused := focusLeft && c.fileIdx == cursor
-			*lines = append(*lines, renderStageLeaf(prefix, filepath.Base(entry.path), focused, entry.staged, entry.file.IsNew))
+			*lines = append(*lines, renderStageLeaf(prefix, filepath.Base(entry.path), focused, entry))
 		}
 	}
 }
@@ -458,26 +451,33 @@ func renderDirNode(node *stageDirNode, entries []stageFileEntry, cursor int, foc
 // renderStageLeaf renders one file entry row.
 // prefix is the indentation string (e.g., "    " for depth 1).
 // When focused, the last two chars of prefix are replaced by "❯ ".
-func renderStageLeaf(prefix, name string, focused, staged, isNew bool) string {
+func renderStageLeaf(prefix, name string, focused bool, entry stageFileEntry) string {
 	// When focused, replace the trailing 2 spaces of indent with the cursor marker.
 	cursorPrefix := prefix
 	if len(cursorPrefix) >= 2 {
 		cursorPrefix = cursorPrefix[:len(cursorPrefix)-2]
 	}
 
+	statusSymbol := "✎"
+	if entry.file.IsNew {
+		statusSymbol = "★"
+	}
+	if entry.file.IsDeleted {
+		statusSymbol = "🗑"
+	}
+	row := fmt.Sprintf("%s %s", statusSymbol, name)
+
+	textColor := lipgloss.Color("15")
+	if entry.staged {
+		textColor = lipgloss.Color("82")
+	}
+
 	if focused {
 		return lipgloss.NewStyle().
-			Foreground(lipgloss.Color("214")).
+			Foreground(textColor).
 			Background(lipgloss.Color("235")).
 			Bold(true).
-			Render(cursorPrefix + "❯ " + name)
+			Render(cursorPrefix + "❯ " + row)
 	}
-	if staged {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Render(prefix + name)
-	}
-	if isNew {
-		// Untracked files shown in a distinct colour.
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("111")).Render(prefix + name)
-	}
-	return lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Render(prefix + name)
+	return lipgloss.NewStyle().Foreground(textColor).Render(prefix + row)
 }

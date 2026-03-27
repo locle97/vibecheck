@@ -177,3 +177,32 @@ func TestParseDiff_LineKinds(t *testing.T) {
 		}
 	}
 }
+
+func TestParseDiff_DeletedFile(t *testing.T) {
+	deletedDiff := `diff --git a/old.txt b/old.txt
+deleted file mode 100644
+index 1111111..0000000
+--- a/old.txt
++++ /dev/null
+@@ -1,2 +0,0 @@
+-hello
+-world
+`
+
+	files, err := git.ParseDiff(deletedDiff)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(files) != 1 {
+		t.Fatalf("want 1 file, got %d", len(files))
+	}
+	if files[0].Path != "old.txt" {
+		t.Fatalf("want path old.txt, got %q", files[0].Path)
+	}
+	if !files[0].IsDeleted {
+		t.Fatal("old.txt should be marked as deleted")
+	}
+	if files[0].IsNew {
+		t.Fatal("deleted file should not be marked as new")
+	}
+}

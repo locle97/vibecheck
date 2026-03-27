@@ -29,9 +29,10 @@ type Hunk struct {
 
 // File is a changed file and all its hunks.
 type File struct {
-	Path  string
-	IsNew bool
-	Hunks []Hunk
+	Path      string
+	IsNew     bool
+	IsDeleted bool
+	Hunks     []Hunk
 }
 
 // ParseStagedDiff runs `git diff --cached` and returns the parsed result.
@@ -68,21 +69,39 @@ func ParseDiff(raw string) ([]File, error) {
 				files = append(files, *curFile)
 			}
 			curFile = &File{}
+			parts := strings.Fields(line)
+			if len(parts) >= 4 {
+				curFile.Path = strings.TrimPrefix(parts[3], "b/")
+			}
 
 		case strings.HasPrefix(line, "new file mode"):
 			if curFile != nil {
 				curFile.IsNew = true
 			}
 
+		case strings.HasPrefix(line, "deleted file mode"):
+			if curFile != nil {
+				curFile.IsDeleted = true
+			}
+
 		case strings.HasPrefix(line, "+++ "):
 			if curFile != nil {
 				path := strings.TrimPrefix(line, "+++ ")
+				if path == "/dev/null" {
+					curFile.IsDeleted = true
+					continue
+				}
 				path = strings.TrimPrefix(path, "b/")
 				curFile.Path = path
 			}
 
 		case strings.HasPrefix(line, "--- "):
-			// skip — path taken from +++ line
+			if curFile != nil && curFile.Path == "" {
+				path := strings.TrimPrefix(line, "--- ")
+				if path != "/dev/null" {
+					curFile.Path = strings.TrimPrefix(path, "a/")
+				}
+			}
 
 		case strings.HasPrefix(line, "@@ "):
 			if curFile == nil {
