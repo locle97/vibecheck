@@ -86,9 +86,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.startPhase(AppPhaseSummary)
 
 	case CommitConfirmedMsg:
-		a.commitConfirmed = true
-		a.commitMessage = msg.Message
-		return a, tea.Quit
+		git.Commit(msg.Message)
+		return a.startPhase(AppPhaseStage)
 
 	case BackToStageMsg:
 		return a.startPhase(AppPhaseStage)
