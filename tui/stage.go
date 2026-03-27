@@ -113,14 +113,20 @@ func (m StageModel) Update(msg tea.Msg) (StageModel, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 
-		case "tab":
+		case "tab", "l":
 			if m.focus == stageFocusLeft {
 				m.focus = stageFocusRight
 				m.diffView.SetHunkHighlight(true)
 				if m.diffView.HunkCount() > 0 {
 					m.diffView.SetFocusedHunk(0)
 				}
-			} else {
+			} else if msg.String() == "tab" {
+				m.focus = stageFocusLeft
+				m.diffView.SetHunkHighlight(false)
+			}
+
+		case "h":
+			if m.focus == stageFocusRight {
 				m.focus = stageFocusLeft
 				m.diffView.SetHunkHighlight(false)
 			}
@@ -235,12 +241,12 @@ func (m StageModel) View() string {
 	// --- Footer ---
 	var footerParts []string
 	if m.focus == stageFocusLeft {
-		footerParts = append(footerParts, "↑↓/jk: navigate  space: stage/unstage  tab: diff panel")
+		footerParts = append(footerParts, "↑↓/jk: navigate  space: stage/unstage  tab/l: diff panel")
 		if len(m.staged) > 0 {
 			footerParts = append(footerParts, "enter: start quiz")
 		}
 	} else {
-		footerParts = append(footerParts, "↑↓/jk: prev/next hunk  space: stage/unstage hunk  tab: file list")
+		footerParts = append(footerParts, "↑↓/jk: prev/next hunk  space: stage/unstage hunk  tab/h: file list")
 		if len(m.staged) > 0 {
 			footerParts = append(footerParts, "enter: start quiz")
 		}
