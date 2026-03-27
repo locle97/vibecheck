@@ -12,34 +12,35 @@ import (
 type AppPhase int
 
 const (
-	AppPhaseQuiz AppPhase = iota
-	AppPhaseSummary
-	AppPhaseCommit
+	AppPhaseStage   AppPhase = iota // staging screen (first phase)
+	AppPhaseQuiz                    // quiz screen
+	AppPhaseSummary                 // results screen
+	AppPhaseCommit                  // commit message screen
 )
 
 // App is the root Bubbletea model. It routes messages to the active sub-model.
 type App struct {
-	phase            AppPhase
-	width            int
-	height           int
-	initialized      bool
-	files            []git.File
-	cfg              config.Config
-	gen              *quiz.Generator
-	quizScore        float64
-	passed           bool
-	commitConfirmed  bool
-	commitMessage    string
+	phase           AppPhase
+	width           int
+	height          int
+	initialized     bool
+	files           []git.File
+	cfg             config.Config
+	gen             *quiz.Generator
+	quizScore       float64
+	passed          bool
+	commitConfirmed bool
+	commitMessage   string
 
+	stage   StageModel
 	quiz    QuizModel
 	summary SummaryModel
 	commit  CommitModel
 }
 
-func NewApp(files []git.File, gen *quiz.Generator, cfg config.Config) App {
+func NewApp(gen *quiz.Generator, cfg config.Config) App {
 	return App{
-		phase: AppPhaseQuiz,
-		files: files,
+		phase: AppPhaseStage,
 		cfg:   cfg,
 		gen:   gen,
 	}
@@ -72,6 +73,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a.routeToActive(msg)
 
+	case StageDoneMsg:
+		a.files = msg.Files
+		return a.startPhase(AppPhaseQuiz)
+
 	case QuizDoneMsg:
 		a.quizScore = msg.Score
 		a.passed = msg.Passed
@@ -91,6 +96,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (a App) routeToActive(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch a.phase {
+	case AppPhaseStage:
+		upd, cmd := a.stage.Update(msg)
+		a.stage = upd
+		return a, cmd
 	case AppPhaseQuiz:
 		upd, cmd := a.quiz.Update(msg)
 		a.quiz = upd
@@ -112,6 +121,8 @@ func (a App) View() string {
 		return "vibecheck — loading…"
 	}
 	switch a.phase {
+	case AppPhaseStage:
+		return a.stage.View()
 	case AppPhaseQuiz:
 		return a.quiz.View()
 	case AppPhaseSummary:
@@ -125,6 +136,9 @@ func (a App) View() string {
 func (a App) startPhase(phase AppPhase) (App, tea.Cmd) {
 	a.phase = phase
 	switch phase {
+	case AppPhaseStage:
+		a.stage = NewStageModel(a.width, a.height)
+		return a, a.stage.Init()
 	case AppPhaseQuiz:
 		a.quiz = NewQuizModel(a.files, a.gen, a.cfg.Review.PassThreshold, a.width, a.height)
 		return a, a.quiz.Init()

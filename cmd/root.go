@@ -13,31 +13,28 @@ import (
 
 	"github.com/locle97/vibecheck/config"
 	"github.com/locle97/vibecheck/internal/agent"
-	"github.com/locle97/vibecheck/internal/git"
 	"github.com/locle97/vibecheck/internal/quiz"
 	"github.com/locle97/vibecheck/tui"
 )
 
 type rootDeps struct {
-	loadConfig      func(path string) (config.Config, error)
-	parseStagedDiff func() ([]git.File, error)
-	newAgent        func(binary, model string) (agent.Agent, error)
-	newGenerator    func(a agent.Agent) *quiz.Generator
-	runTUI          func(files []git.File, gen *quiz.Generator, cfg config.Config) error
+	loadConfig   func(path string) (config.Config, error)
+	newAgent     func(binary, model string) (agent.Agent, error)
+	newGenerator func(a agent.Agent) *quiz.Generator
+	runTUI       func(gen *quiz.Generator, cfg config.Config) error
 }
 
 func defaultRootDeps() rootDeps {
 	return rootDeps{
-		loadConfig:      config.Load,
-		parseStagedDiff: git.ParseStagedDiff,
-		newAgent:        agent.New,
-		newGenerator:    quiz.New,
-		runTUI:          defaultRunTUI,
+		loadConfig:   config.Load,
+		newAgent:     agent.New,
+		newGenerator: quiz.New,
+		runTUI:       defaultRunTUI,
 	}
 }
 
-func defaultRunTUI(files []git.File, gen *quiz.Generator, cfg config.Config) error {
-	app := tui.NewApp(files, gen, cfg)
+func defaultRunTUI(gen *quiz.Generator, cfg config.Config) error {
+	app := tui.NewApp(gen, cfg)
 	p := tea.NewProgram(app, tea.WithAltScreen())
 	m, err := p.Run()
 	if err != nil {
@@ -61,7 +58,7 @@ func defaultRunTUI(files []git.File, gen *quiz.Generator, cfg config.Config) err
 }
 
 // NewRootCmd returns the root cobra command. out is used for non-TUI output
-// (errors, no-staged-changes message), allowing tests to capture it.
+// (errors), allowing tests to capture it.
 func NewRootCmd(out io.Writer) *cobra.Command {
 	return newRootCmd(out, defaultRootDeps())
 }
@@ -78,22 +75,13 @@ func newRootCmd(out io.Writer, deps rootDeps) *cobra.Command {
 				return fmt.Errorf("load config: %w", err)
 			}
 
-			files, err := deps.parseStagedDiff()
-			if err != nil {
-				return fmt.Errorf("read staged diff: %w", err)
-			}
-			if len(files) == 0 {
-				fmt.Fprintln(out, "No staged changes found. Stage files with git add and run vibecheck again.")
-				return nil
-			}
-
 			a, err := deps.newAgent(string(cfg.Agent.Provider), cfg.Agent.Model)
 			if err != nil {
 				return fmt.Errorf("create agent: %w", err)
 			}
 
 			gen := deps.newGenerator(a)
-			return deps.runTUI(files, gen, cfg)
+			return deps.runTUI(gen, cfg)
 		},
 	}
 	root.SetOut(out)
