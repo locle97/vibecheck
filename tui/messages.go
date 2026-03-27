@@ -1,5 +1,7 @@
 package tui
 
+import "github.com/locle97/vibecheck/internal/git"
+
 // AnnotationDoneMsg is emitted when all hunks have been annotated.
 type AnnotationDoneMsg struct {
 	Annotations []string
@@ -20,4 +22,10 @@ type CommitMsgReadyMsg struct {
 // CommitConfirmedMsg is emitted when the user confirms the generated commit message.
 type CommitConfirmedMsg struct {
 	Message string
+}
+
+// StageDoneMsg is emitted by StageModel when the user presses Enter with at least
+// one staged file, signalling the App to transition to the Quiz phase.
+type StageDoneMsg struct {
+	Files []git.File
 }
