@@ -142,7 +142,7 @@ func (a App) startPhase(phase AppPhase) (App, tea.Cmd) {
 		a.stage = NewStageModel(a.width, a.height)
 		return a, a.stage.Init()
 	case AppPhaseQuiz:
-		a.quiz = NewQuizModel(a.files, a.gen, a.cfg.Review.PassThreshold, a.width, a.height)
+		a.quiz = NewQuizModel(a.files, a.gen, a.cfg.Review.PassThreshold, a.cfg.Review.ShowHunk, a.width, a.height)
 		return a, a.quiz.Init()
 	case AppPhaseSummary:
 		a.summary = NewSummaryModel(a.quizScore, a.passed, a.cfg.Review.PassThreshold, a.width, a.height)

@@ -24,6 +24,7 @@ const (
 // ReviewConfig controls quiz behaviour.
 type ReviewConfig struct {
 	PassThreshold float64 `toml:"pass_threshold"`
+	ShowHunk      bool    `toml:"show_hunk"`
 }
 
 // RequiresPhase reports whether phase is in the required phases list.

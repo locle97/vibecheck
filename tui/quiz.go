@@ -94,8 +94,10 @@ func splitPaneWidths(totalWidth int) (int, int) {
 	return left, right
 }
 
-// QuizModel is the split-pane quiz view.
-// Left pane shows the relevant diff; right pane shows the MCQ question and options.
+// QuizModel is the quiz view.
+// When showHunk is true a split-pane is shown: diff on the left, question on the right.
+// When showHunk is false only the question pane is shown; the developer must navigate to
+// the code themselves, which forces genuine comprehension rather than diff-scanning.
 type QuizModel struct {
 	questions    []quiz.Question
 	current      int
@@ -104,6 +106,7 @@ type QuizModel struct {
 	correct      int
 	score        float64
 	passThresh   float64
+	showHunk     bool
 	loading      bool
 	flashing     bool
 	showResult   bool
@@ -122,7 +125,7 @@ type quizQuestionsMsg struct {
 	err       error
 }
 
-func NewQuizModel(files []git.File, gen *quiz.Generator, passThreshold float64, width, height int) QuizModel {
+func NewQuizModel(files []git.File, gen *quiz.Generator, passThreshold float64, showHunk bool, width, height int) QuizModel {
 	if passThreshold <= 0 {
 		passThreshold = 0.70
 	}
@@ -131,6 +134,7 @@ func NewQuizModel(files []git.File, gen *quiz.Generator, passThreshold float64, 
 		hunks:      flattenHunks(files),
 		gen:        gen,
 		passThresh: passThreshold,
+		showHunk:   showHunk,
 		width:      width,
 		height:     height,
 		loading:    true,
@@ -291,20 +295,10 @@ func (m QuizModel) View() string {
 		return lipgloss.JoinVertical(lipgloss.Left, title)
 	}
 
-	leftW, rightW := splitPaneWidths(m.width)
 	innerH := m.height - 6
 	if innerH < 3 {
 		innerH = 3
 	}
-
-	// Left pane: diff.
-	m.diffView.SetSize(leftW, innerH)
-	leftPane := lipgloss.NewStyle().
-		Width(leftW).Height(innerH).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("240")).
-		Padding(0, 1).
-		Render(m.diffView.Render())
 
 	// Right pane: question + options or result.
 	q := m.questions[m.current]
@@ -382,19 +376,44 @@ func (m QuizModel) View() string {
 	}
 
 	rightContent := lipgloss.JoinVertical(lipgloss.Left, qText, "", body)
-	rightPane := lipgloss.NewStyle().
-		Width(rightW).Height(innerH).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("214")).
-		Padding(1, 2).
-		Render(rightContent)
 
-	body2 := lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
+	var body2 string
+	var footerHints string
+	if m.showHunk {
+		leftW, rightW := splitPaneWidths(m.width)
+		m.diffView.SetSize(leftW, innerH)
+		leftPane := lipgloss.NewStyle().
+			Width(leftW).Height(innerH).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("240")).
+			Padding(0, 1).
+			Render(m.diffView.Render())
+		rightPane := lipgloss.NewStyle().
+			Width(rightW).Height(innerH).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("214")).
+			Padding(1, 2).
+			Render(rightContent)
+		body2 = lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
+		footerHints = " ctrl+u/ctrl+d: scroll diff • ↑↓/jk: select • enter: confirm • ctrl+c: abort"
+	} else {
+		paneW := m.width - 6
+		if paneW < 10 {
+			paneW = 10
+		}
+		rightPane := lipgloss.NewStyle().
+			Width(paneW).Height(innerH).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("214")).
+			Padding(1, 2).
+			Render(rightContent)
+		body2 = rightPane
+		footerHints = " ↑↓/jk: select • enter: confirm • ctrl+c: abort"
+	}
 
 	var footer string
 	if !m.showResult {
-		footer = lipgloss.NewStyle().Faint(true).
-			Render(" ctrl+u/ctrl+d: scroll diff • ↑↓/jk: select • enter: confirm • ctrl+c: abort")
+		footer = lipgloss.NewStyle().Faint(true).Render(footerHints)
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, title, body2, footer)
