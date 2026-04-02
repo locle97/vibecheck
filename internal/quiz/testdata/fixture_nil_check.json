@@ -1,0 +1,8 @@
+{
+  "description": "Guard clause added to reject empty config path before filesystem access",
+  "diff": "=== config/loader.go ===\n[hunk_id: hunk_f0_h0]\n@@ -12,6 +12,10 @@\n func Load(path string) (*Config, error) {\n-\treturn parseFile(path)\n+\tif path == \"\" {\n+\t\treturn nil, errors.New(\"config path must not be empty\")\n+\t}\n+\treturn parseFile(path)\n }\n\n",
+  "response": "[{\"id\":\"H1\",\"hunk_id\":\"hunk_f0_h0\",\"question\":\"What was the observable behavior of Load() when called with an empty string before this change?\",\"options\":[\"It returned a nil Config and a clear validation error\",\"It attempted to open a file with an empty name, returning a low-level OS error\",\"It panicked with a nil pointer dereference inside parseFile\",\"It silently returned a Config with zero values\"],\"answer\":1,\"hint\":\"Consider what parseFile does with a path it receives verbatim\",\"explanation\":\"Before the guard, an empty string was passed directly to parseFile, which would delegate to the OS — producing an opaque filesystem error rather than a clear validation message. The guard now fails fast with a descriptive error, making the contract explicit at the API boundary.\"}]",
+  "want_count": 1,
+  "want_hunk_id": "hunk_f0_h0",
+  "want_answer": 1
+}

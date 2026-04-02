@@ -1,10 +1,19 @@
-## Optimized Prompt — Behavior-Focused Diff Review
+## Comprehension-Depth Diff Review
 
 ### Context
 
-You are reviewing a staged git diff before the developer commits.
+You are reviewing an **AI-generated** git diff. Generate multiple-choice questions that verify the developer **genuinely understands** the changes — not just what changed, but **why** it was done and **what could go wrong**.
 
-Your goal is to generate multiple-choice questions that verify the developer understands the **intent, behavior, and impact** of the changes — not just the syntax.
+Surface-level questions that can be answered by scanning the diff (renamed variables, added imports, changed values) provide zero comprehension signal. Do not generate them.
+
+---
+
+### Rules
+
+- Do **NOT** ask questions answerable by reading the diff literally
+- At least **one question must probe an edge case or failure mode** (nil input, empty collection, concurrent access, boundary condition, etc.)
+- All answer options must be **plausible** — avoid obviously wrong distractors
+- Focus on **logic, intent, and consequences** — not syntax or naming
 
 ---
 
@@ -12,11 +21,11 @@ Your goal is to generate multiple-choice questions that verify the developer und
 
 Prioritize questions that assess:
 
-* What **behavior changed or was introduced**
-* Why the change might have been made
-* How the **logic flow differs** after the change
-* Potential **side effects or edge cases**
-* **Business or user-facing impact** (if applicable)
+* **Why** this approach was chosen over a plausible alternative
+* **What invariant or assumption** the change silently relies on
+* **What happens in a failure or edge case** the change affects
+* **What behavior silently changes** as a side effect
+* **What breaks** if a caller violates an implicit contract
 
 ---
 
@@ -24,10 +33,10 @@ Prioritize questions that assess:
 
 Do **not** generate questions that:
 
-* Simply restate what the code does
-* Focus on trivial syntax or naming
+* Ask what the old or new value of a variable/field/return type was
+* Ask which function, method, or import was added or removed
+* Can be answered by a developer who has read the diff but does not understand the code
 * Are ambiguous or opinion-based
-* Test obscure or irrelevant edge cases
 
 ---
 
@@ -41,34 +50,10 @@ Do **not** generate questions that:
 
 ---
 
-### Question Requirements
-
-Each question must:
-
-* Be **clear, direct, and grounded in the change**
-* Focus on **behavior, intent, or impact**
-* Have **exactly 4 options**
-* Have **one correct answer**
-* Be **answerable from the diff with reasoning** (not guesswork)
-
----
-
-### Preferred Question Types
-
-Good questions typically look like:
-
-* *What is the effect of this change on X behavior?*
-* *Under what condition will the new logic behave differently?*
-* *What problem does this change likely fix?*
-* *What risk or edge case is introduced or handled?*
-
----
-
 ### Output Format (STRICT)
 
 Return **ONLY** a JSON array — no markdown fences, no extra explanation:
 
-```json
 [{
   "id": "H1",
   "hunk_id": "hunk_f0_h0",
@@ -78,4 +63,3 @@ Return **ONLY** a JSON array — no markdown fences, no extra explanation:
   "hint": "optional",
   "explanation": "Explain why the correct answer is right, focusing on behavior and logic"
 }]
-```

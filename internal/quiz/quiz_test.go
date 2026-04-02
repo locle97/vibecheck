@@ -2,7 +2,9 @@ package quiz
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -190,5 +192,57 @@ func TestGenerateQuestions_AnnotatesByHunkIDWhenProvided(t *testing.T) {
 
 	if questions[1].TargetHunkIdx != 1 {
 		t.Fatalf("question 1 (hunk_f0_h0) should target hunk 1, got %+v", questions[1])
+	}
+}
+
+func TestParseQuestions_ReasoningFixtures(t *testing.T) {
+	type fixture struct {
+		Description string `json:"description"`
+		Diff        string `json:"diff"`
+		Response    string `json:"response"`
+		WantCount   int    `json:"want_count"`
+		WantHunkID  string `json:"want_hunk_id"`
+		WantAnswer  int    `json:"want_answer"`
+	}
+
+	fixtureFiles := []string{
+		"testdata/fixture_nil_check.json",
+		"testdata/fixture_map_lookup.json",
+		"testdata/fixture_mutex.json",
+	}
+
+	for _, path := range fixtureFiles {
+		t.Run(path, func(t *testing.T) {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read fixture: %v", err)
+			}
+
+			var f fixture
+			if err := json.Unmarshal(data, &f); err != nil {
+				t.Fatalf("unmarshal fixture: %v", err)
+			}
+
+			questions, err := parseQuestions(f.Response)
+			if err != nil {
+				t.Fatalf("parseQuestions failed: %v", err)
+			}
+
+			if len(questions) != f.WantCount {
+				t.Fatalf("want %d questions, got %d", f.WantCount, len(questions))
+			}
+
+			if questions[0].HunkID != f.WantHunkID {
+				t.Errorf("want hunk_id %q, got %q", f.WantHunkID, questions[0].HunkID)
+			}
+
+			if questions[0].Answer != f.WantAnswer {
+				t.Errorf("want answer index %d, got %d", f.WantAnswer, questions[0].Answer)
+			}
+
+			if questions[0].Explanation == "" {
+				t.Error("reasoning fixture must include an explanation")
+			}
+		})
 	}
 }
